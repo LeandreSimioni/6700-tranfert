@@ -1,5 +1,6 @@
 package fr.simioni.a6700transfer
 
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -7,6 +8,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.storage.StorageManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 class WatchdogService : Service() {
@@ -35,7 +37,6 @@ class WatchdogService : Service() {
             val prefs = getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
             TransferLog.add(this, "[Watch] Sony detecte - attente du volume MSC...")
 
-            // Poll every 3 seconds until volume appears (no timeout)
             while (!Thread.currentThread().isInterrupted) {
                 val timestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
                 if (timestamp == -1L) {
@@ -45,31 +46,53 @@ class WatchdogService : Service() {
 
                 val volumes = removableVolumes()
                 if (volumes.isNotEmpty()) {
-                    for ((volId, _) in volumes) {
-                        val safUri = prefs.getString("${MainActivity.KEY_SAF_URI_PREFIX}$volId", null)
-                        if (safUri != null) {
-                            val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
-                            TransferLog.add(this, "[Watch] Volume MSC detecte: $volId - demarrage transfert")
-                            ContextCompat.startForegroundService(
-                                this,
-                                Intent(this, TransferService::class.java).apply {
-                                    putExtra(TransferService.EXTRA_SAF_URI, safUri)
-                                    putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
-                                    putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
-                                    putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
-                                }
-                            )
-                            stopSelf(); return@Thread
-                        } else {
-                            TransferLog.add(this, "[Watch] Volume trouve ($volId) mais pas d'acces SAF - ouvrir l'app et utiliser Scan MSC")
-                            stopSelf(); return@Thread
+                    val (volId, _) = volumes.first()
+                    val safUri = prefs.getString("${MainActivity.KEY_SAF_URI_PREFIX}$volId", null)
+                    if (safUri != null) {
+                        val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
+                        TransferLog.add(this, "[Watch] Volume MSC detecte: $volId - demarrage transfert")
+                        ContextCompat.startForegroundService(
+                            this,
+                            Intent(this, TransferService::class.java).apply {
+                                putExtra(TransferService.EXTRA_SAF_URI, safUri)
+                                putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
+                                putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
+                                putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
+                            }
+                        )
+                        stopSelf(); return@Thread
+                    } else {
+                        // SAF access missing - open app so user can grant it
+                        TransferLog.add(this, "[Watch] Volume $volId detecte mais acces SAF manquant - ouverture app")
+                        showSafNeededNotification()
+                        val openApp = Intent(this, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         }
+                        startActivity(openApp)
+                        stopSelf(); return@Thread
                     }
                 }
 
                 sleepMs(3_000)
             }
         }.also { it.start() }
+    }
+
+    private fun showSafNeededNotification() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val notif = NotificationCompat.Builder(this, NotifHelper.CHANNEL_DONE)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText("Volume Sony detecte - appuyez pour autoriser l'acces et lancer le transfert")
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(NotifHelper.NOTIF_DONE, notif)
+        } catch (_: SecurityException) {}
     }
 
     private fun sleepMs(ms: Long) {
