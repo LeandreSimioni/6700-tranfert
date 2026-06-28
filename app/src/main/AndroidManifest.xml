@@ -38,27 +38,22 @@
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
-        <!-- Recepteur USB Host (mode MTP) -->
+        <!-- Recepteur USB Host (MTP) : USB_DEVICE_ATTACHED + permission -->
         <receiver
             android:name=".UsbReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="fr.simioni.a6700transfer.USB_PERMISSION" />
+            </intent-filter>
             <meta-data
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </receiver>
 
-        <receiver
-            android:name=".UsbReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="fr.simioni.a6700transfer.USB_PERMISSION" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Recepteur stockage USB (mode MSC) -->
+        <!-- Recepteur stockage USB (MSC) -->
         <receiver
             android:name=".UsbStorageReceiver"
             android:exported="true">
