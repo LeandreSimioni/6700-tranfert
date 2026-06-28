@@ -32,6 +32,7 @@ class TransferService : Service() {
     private var maxDimension = 4096
     private var totalFiles = 0
     private var doneFiles = 0
+    private var skippedFiles = 0
     private var volId: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -65,6 +66,23 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
+    /** Returns true if A6700_name already exists in MediaStore (dedup check) */
+    private fun alreadyExists(displayName: String, isImage: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                         else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val cursor = contentResolver.query(
+            collection,
+            arrayOf(MediaStore.MediaColumns._ID),
+            "${MediaStore.MediaColumns.DISPLAY_NAME} = ?",
+            arrayOf(displayName),
+            null
+        )
+        val exists = (cursor?.count ?: 0) > 0
+        cursor?.close()
+        return exists
+    }
+
     private fun clearSafUri(id: String) {
         getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
             .edit().remove("${MainActivity.KEY_SAF_URI_PREFIX}$id").apply()
@@ -83,13 +101,8 @@ class TransferService : Service() {
             val rootDoc = DocumentFile.fromTreeUri(this, rootUri)
             if (rootDoc == null || !rootDoc.canRead()) {
                 val id = volId
-                if (id != null) {
-                    clearSafUri(id)
-                    log("[MSC] Permission SAF expiree pour $id - ouverture app pour re-autoriser")
-                    openAppForReGrant()
-                } else {
-                    log("[MSC] SAF: volume inaccessible - ouvrir l'app et refaire Scan MSC")
-                }
+                if (id != null) { clearSafUri(id); openAppForReGrant() }
+                else log("[MSC] SAF: volume inaccessible - ouvrir l'app et refaire Scan MSC")
                 updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
@@ -102,13 +115,24 @@ class TransferService : Service() {
             }
             val files = mutableListOf<DocumentFile>()
             collectDocumentFiles(dcim, sinceTimestamp, files)
-            log("[MSC] SAF: ${files.size} fichier(s) a copier")
+            log("[MSC] SAF: ${files.size} fichier(s) a copier (apres filtre date)")
             if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             files.sortBy { it.lastModified() }
             totalFiles = files.size
             doneFiles = 0
+            skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for (f in files) {
+                val displayName = "A6700_${f.name}"
+                val mime = mimeFor(f.name ?: "")
+                val isImage = mime.startsWith("image/")
+                if (alreadyExists(displayName, isImage)) {
+                    skippedFiles++
+                    log("[MSC] SKIP (existe deja): ${f.name}")
+                    totalFiles--
+                    updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
+                    continue
+                }
                 try {
                     saveSafFile(f)
                     doneFiles++
@@ -122,20 +146,25 @@ class TransferService : Service() {
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
             }
-            log("[MSC] Termine: $doneFiles fichier(s) copie(s)")
+            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles deja existant(s)")
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
 
     private fun collectDocumentFiles(dir: DocumentFile, sinceTimestamp: Long, result: MutableList<DocumentFile>) {
         for (child in dir.listFiles()) {
-            if (child.isDirectory) collectDocumentFiles(child, sinceTimestamp, result)
-            else {
-                val name = child.name ?: continue
-                if (!isMediaFile(name)) continue
-                val ts = child.lastModified()
-                if (ts == 0L || ts > sinceTimestamp) result.add(child)
+            if (child.isDirectory) { collectDocumentFiles(child, sinceTimestamp, result); continue }
+            val name = child.name ?: continue
+            if (!isMediaFile(name)) continue
+            val ts = child.lastModified()
+            if (ts == 0L) {
+                // lastModified() not supported on this volume - use filename-based date if possible,
+                // otherwise include the file (dedup will prevent re-copying)
+                result.add(child)
+            } else if (ts > sinceTimestamp) {
+                result.add(child)
             }
+            // ts > 0 && ts <= sinceTimestamp -> photo taken before cutoff, skip
         }
     }
 
@@ -164,8 +193,9 @@ class TransferService : Service() {
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
                 ).also { it.mkdirs() }
                 val dest = File(destDir, displayName)
+                if (dest.exists()) return // dedup for older Android
                 if (mime == "image/jpeg" && maxDimension > 0) ImageProcessor.process(temp, dest, maxDimension)
-                else temp.copyTo(dest, overwrite = true)
+                else temp.copyTo(dest, overwrite = false)
                 MediaScannerConnection.scanFile(this, arrayOf(dest.absolutePath), null, null)
             }
         } finally { temp.delete() }
@@ -175,8 +205,6 @@ class TransferService : Service() {
         try {
             updateProgress(getString(R.string.notif_scanning), 0, 0)
             log("[MSC] Scan dans $mountPath")
-            File(mountPath).list()?.take(20)?.let { log("[MSC] Racine: ${it.joinToString(", ")}") }
-                ?: log("[MSC] Racine inaccessible (permission manquante?)")
             val dcim = File(mountPath, "DCIM")
             if (!dcim.exists()) { log("[MSC] Pas de dossier DCIM dans $mountPath"); updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             val files = mutableListOf<File>()
@@ -186,8 +214,18 @@ class TransferService : Service() {
             files.sortBy { it.lastModified() }
             totalFiles = files.size
             doneFiles = 0
+            skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for (f in files) {
+                val displayName = "A6700_${f.name}"
+                val mime = mimeFor(f.name)
+                val isImage = mime.startsWith("image/")
+                if (alreadyExists(displayName, isImage)) {
+                    skippedFiles++; log("[MSC] SKIP (existe deja): ${f.name}")
+                    totalFiles--
+                    updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
+                    continue
+                }
                 try {
                     saveMscFile(f)
                     doneFiles++
@@ -199,7 +237,7 @@ class TransferService : Service() {
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
             }
-            log("[MSC] Termine: $doneFiles fichier(s)")
+            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles deja existant(s)")
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
@@ -207,8 +245,9 @@ class TransferService : Service() {
     private fun collectMediaFiles(dir: File, sinceTimestamp: Long, result: MutableList<File>) {
         val children = dir.listFiles() ?: return
         for (f in children) {
-            if (f.isDirectory) collectMediaFiles(f, sinceTimestamp, result)
-            else if (f.lastModified() > sinceTimestamp && isMediaFile(f.name)) result.add(f)
+            if (f.isDirectory) { collectMediaFiles(f, sinceTimestamp, result); continue }
+            if (!isMediaFile(f.name)) continue
+            if (f.lastModified() > sinceTimestamp) result.add(f)
         }
     }
 
@@ -244,8 +283,9 @@ class TransferService : Service() {
             else Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
             ).also { it.mkdirs() }
             val dest = File(destDir, displayName)
+            if (dest.exists()) return
             if (mime == "image/jpeg" && maxDimension > 0) ImageProcessor.process(src, dest, maxDimension)
-            else src.copyTo(dest, overwrite = true)
+            else src.copyTo(dest, overwrite = false)
             MediaScannerConnection.scanFile(this, arrayOf(dest.absolutePath), null, null)
         }
     }
@@ -274,12 +314,8 @@ class TransferService : Service() {
             .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setOngoing(true)
-        if (max > 0) {
-            builder.setProgress(max, progress, false)
-            builder.setSubText("$progress / $max")
-        } else {
-            builder.setProgress(0, 0, true)
-        }
+        if (max > 0) { builder.setProgress(max, progress, false); builder.setSubText("$progress / $max") }
+        else builder.setProgress(0, 0, true)
         return builder.build()
     }
 
