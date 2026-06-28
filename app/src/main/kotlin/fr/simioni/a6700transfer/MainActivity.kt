@@ -52,7 +52,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        // Version visible dans le sous-titre de la toolbar
         supportActionBar?.subtitle = "v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})"
         UpdateChecker.check(this)
     }
@@ -83,6 +82,8 @@ class MainActivity : AppCompatActivity() {
         val btnSetDate = findViewById<Button>(R.id.btn_set_date)
         val btnPermission = findViewById<Button>(R.id.btn_permission)
         val tvLog = findViewById<TextView>(R.id.tv_log)
+        val btnUpdate = findViewById<Button>(R.id.btn_update)
+        val tvUpdateStatus = findViewById<TextView>(R.id.tv_update_status)
 
         tvStatus.text = if (timestamp == -1L) {
             getString(R.string.status_not_configured)
@@ -105,6 +106,20 @@ class MainActivity : AppCompatActivity() {
 
         val log = TransferLog.get(this)
         tvLog.text = if (log.isBlank()) getString(R.string.log_empty) else log
+
+        btnUpdate.setOnClickListener {
+            btnUpdate.isEnabled = false
+            UpdateChecker.checkManual(
+                this,
+                onStatus = { msg -> tvUpdateStatus.text = msg },
+                onInstall = { intent ->
+                    btnUpdate.isEnabled = true
+                    startActivity(intent)
+                }
+            )
+            // Reactivation du bouton si aucune installation lancee (deja a jour / erreur)
+            tvUpdateStatus.postDelayed({ btnUpdate.isEnabled = true }, 15_000)
+        }
     }
 
     private fun showDateTimePicker() {

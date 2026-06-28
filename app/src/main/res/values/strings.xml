@@ -26,6 +26,13 @@
 
     <string name="log_empty">Aucun transfert effectue</string>
 
+    <string name="btn_check_update">Verifier les mises a jour</string>
+    <string name="update_checking">Verification en cours&#8230;</string>
+    <string name="update_downloading">Telechargement de la mise a jour&#8230;</string>
+    <string name="update_ready">Mise a jour prete - installation lancee</string>
+    <string name="update_up_to_date">Deja a jour (v%1$s)</string>
+    <string name="update_error">Erreur de connexion - reessayez plus tard</string>
+
     <string name="update_channel">Mises a jour</string>
     <string name="update_title">Mise a jour disponible</string>
     <string name="update_text">Appuyez pour installer la nouvelle version de 6700 Transfer</string>

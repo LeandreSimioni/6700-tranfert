@@ -131,6 +131,44 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <!-- Card mise a jour -->
+        <androidx.cardview.widget.CardView
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            android:layout_marginBottom="12dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="MISE A JOUR"
+                    android:textSize="11sp"
+                    android:textColor="#9E9E9E"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="8dp" />
+                <TextView
+                    android:id="@+id/tv_update_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="#424242"
+                    android:layout_marginBottom="12dp"
+                    android:text="" />
+                <Button
+                    android:id="@+id/btn_update"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/btn_check_update"
+                    android:backgroundTint="#F57C00" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
         <!-- Card logs -->
         <androidx.cardview.widget.CardView
             xmlns:app="http://schemas.android.com/apk/res-auto"
