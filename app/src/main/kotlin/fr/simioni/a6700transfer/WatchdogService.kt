@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -43,31 +44,45 @@ class WatchdogService : Service() {
                 }
 
                 val volumes = VolumeHelper.findRemovableVolumes(this)
-                TransferLog.add(this, "[Watch] Volumes detectes: $volumes")
-
                 if (volumes.isNotEmpty()) {
                     val volId = volumes.first()
-                    val safUri = prefs.getString("${MainActivity.KEY_SAF_URI_PREFIX}$volId", null)
-                    if (safUri != null) {
-                        val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
-                        TransferLog.add(this, "[Watch] Volume MSC $volId -> demarrage transfert")
-                        ContextCompat.startForegroundService(
-                            this,
-                            Intent(this, TransferService::class.java).apply {
-                                putExtra(TransferService.EXTRA_SAF_URI, safUri)
-                                putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
-                                putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
-                                putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
-                            }
-                        )
-                        stopSelf(); return@Thread
-                    } else {
-                        TransferLog.add(this, "[Watch] Volume $volId detecte - SAF manquant, ouverture app")
-                        showSafNeededNotification()
-                        startActivity(Intent(this, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        })
-                        stopSelf(); return@Thread
+                    val safUriStr = prefs.getString("${MainActivity.KEY_SAF_URI_PREFIX}$volId", null)
+
+                    when {
+                        safUriStr == null -> {
+                            // No SAF URI stored at all - open app for first-time grant
+                            TransferLog.add(this, "[Watch] Volume $volId detecte - SAF jamais accorde, ouverture app")
+                            showActionNotification("Volume Sony detecte - ouvrez l'app pour autoriser l'acces")
+                            startActivity(Intent(this, MainActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            })
+                            stopSelf(); return@Thread
+                        }
+                        !isSafUriValid(safUriStr) -> {
+                            // Permission expired - clear it and re-ask
+                            TransferLog.add(this, "[Watch] Permission SAF expiree pour $volId - effacement et re-autorisation")
+                            prefs.edit().remove("${MainActivity.KEY_SAF_URI_PREFIX}$volId").apply()
+                            showActionNotification("Acces Sony expire - ouvrez l'app pour re-autoriser")
+                            startActivity(Intent(this, MainActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            })
+                            stopSelf(); return@Thread
+                        }
+                        else -> {
+                            val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
+                            TransferLog.add(this, "[Watch] Volume MSC $volId OK -> demarrage transfert")
+                            ContextCompat.startForegroundService(
+                                this,
+                                Intent(this, TransferService::class.java).apply {
+                                    putExtra(TransferService.EXTRA_SAF_URI, safUriStr)
+                                    putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
+                                    putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
+                                    putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
+                                    putExtra(TransferService.EXTRA_VOL_ID, volId)
+                                }
+                            )
+                            stopSelf(); return@Thread
+                        }
                     }
                 }
 
@@ -76,7 +91,14 @@ class WatchdogService : Service() {
         }.also { it.start() }
     }
 
-    private fun showSafNeededNotification() {
+    private fun isSafUriValid(uriStr: String): Boolean {
+        return try {
+            val uri = Uri.parse(uriStr)
+            contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+        } catch (_: Exception) { false }
+    }
+
+    private fun showActionNotification(text: String) {
         val pi = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).apply {
@@ -90,7 +112,7 @@ class WatchdogService : Service() {
                 NotificationCompat.Builder(this, NotifHelper.CHANNEL_DONE)
                     .setSmallIcon(android.R.drawable.ic_menu_camera)
                     .setContentTitle(getString(R.string.app_name))
-                    .setContentText("Volume Sony detecte - appuyez pour autoriser l'acces")
+                    .setContentText(text)
                     .setContentIntent(pi)
                     .setAutoCancel(true)
                     .build()

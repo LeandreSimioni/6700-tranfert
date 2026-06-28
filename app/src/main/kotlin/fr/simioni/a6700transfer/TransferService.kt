@@ -24,6 +24,7 @@ class TransferService : Service() {
         const val EXTRA_MOUNT_PATH = "mount_path"
         const val EXTRA_SAF_URI = "saf_uri"
         const val EXTRA_MAX_DIMENSION = "max_dimension"
+        const val EXTRA_VOL_ID = "vol_id"
         const val MODE_MTP = "mtp"
         const val MODE_MSC = "msc"
     }
@@ -31,6 +32,7 @@ class TransferService : Service() {
     private var maxDimension = 4096
     private var totalFiles = 0
     private var doneFiles = 0
+    private var volId: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -48,6 +50,7 @@ class TransferService : Service() {
         if (sinceTimestamp == -1L) { stopSelf(); return START_NOT_STICKY }
 
         maxDimension = intent?.getIntExtra(EXTRA_MAX_DIMENSION, 4096) ?: 4096
+        volId = intent?.getStringExtra(EXTRA_VOL_ID)
 
         val safUriStr = intent?.getStringExtra(EXTRA_SAF_URI)
         val mountPath = intent?.getStringExtra(EXTRA_MOUNT_PATH)
@@ -62,12 +65,31 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
+    private fun clearSafUri(id: String) {
+        getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove("${MainActivity.KEY_SAF_URI_PREFIX}$id").apply()
+        log("[MSC] SAF URI efface pour $id - re-autorisation necessaire")
+    }
+
+    private fun openAppForReGrant() {
+        startActivity(Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        })
+    }
+
     private fun doSafTransfer(rootUri: Uri, sinceTimestamp: Long) {
         try {
             updateProgress(getString(R.string.notif_scanning), 0, 0)
             val rootDoc = DocumentFile.fromTreeUri(this, rootUri)
             if (rootDoc == null || !rootDoc.canRead()) {
-                log("[MSC] SAF: volume inaccessible (permission expiree? re-accorder dans l'app)")
+                val id = volId
+                if (id != null) {
+                    clearSafUri(id)
+                    log("[MSC] Permission SAF expiree pour $id - ouverture app pour re-autoriser")
+                    openAppForReGrant()
+                } else {
+                    log("[MSC] SAF: volume inaccessible - ouvrir l'app et refaire Scan MSC")
+                }
                 updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
@@ -97,7 +119,6 @@ class TransferService : Service() {
                 }
             }
             if (doneFiles > 0) {
-                // Utilise l'heure reelle du transfert (pas l'heure des fichiers Sony)
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
             }
