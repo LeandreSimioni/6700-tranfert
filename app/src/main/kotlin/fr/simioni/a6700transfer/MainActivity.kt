@@ -123,7 +123,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        requestNextPermission()
         updateUi()
         refreshLogs()
         // Resume download progress polling if a download was active
@@ -139,15 +138,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() { super.onPause(); stopProgressPolling() }
 
-    private fun requestNextPermission() {
+    private fun requestAllPermissions() {
+        // Step 1: MANAGE_EXTERNAL_STORAGE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
+        // Step 2: Install unknown apps
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             return
         }
+        // Step 3: Battery optimization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(PowerManager::class.java)
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -155,6 +157,7 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
+        // Step 4: Runtime permissions
         val toRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -165,7 +168,12 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         val missing = toRequest.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+        if (missing.isNotEmpty()) {
+            permissionLauncher.launch(missing.toTypedArray())
+        } else {
+            Toast.makeText(this, "Toutes les permissions sont accordées ✓", Toast.LENGTH_SHORT).show()
+            updateUi()
+        }
     }
 
     private fun startProgressPolling() {
@@ -221,7 +229,7 @@ class MainActivity : AppCompatActivity() {
             if (allOk) getString(R.string.permissions_ok) else getString(R.string.permissions_missing)
         val btnPerm = findViewById<Button>(R.id.btn_permission)
         btnPerm.text = if (allOk) getString(R.string.btn_check_permissions) else getString(R.string.btn_grant_permissions)
-        btnPerm.setOnClickListener { requestNextPermission() }
+        btnPerm.setOnClickListener { requestAllPermissions() }
     }
 
     private fun hasAllPermissions(): Boolean {
@@ -290,8 +298,7 @@ class MainActivity : AppCompatActivity() {
                         activeDownloadId = UpdateChecker.downloadApk(this)
                         startProgressPolling()
                     }
-                    is UpdateResult.Error -> tvUpdate.text = "Erreur: ${result.message}"
-                }
+                    is UpdateResult.Error -> tvUpdate.text = "Erreur: ${result.message}"}
             }
         }.start()
     }
