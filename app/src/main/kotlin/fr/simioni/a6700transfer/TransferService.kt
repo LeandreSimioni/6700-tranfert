@@ -204,7 +204,8 @@ class TransferService : Service() {
     private fun doMtpTransfer(mtpDevice: MtpDevice, sinceTimestamp: Long) {
         try {
             val storageIds = mtpDevice.storageIds
-            if (storageIds.isNullOrEmpty()) {
+            // IntArray? n'a pas isNullOrEmpty() - verifier null et isEmpty() separement
+            if (storageIds == null || storageIds.isEmpty()) {
                 log("[MTP] Aucun stockage trouve")
                 updateNotification(getString(R.string.notif_no_storage))
                 return
@@ -268,7 +269,7 @@ class TransferService : Service() {
                 MtpConstants.FORMAT_ASSOCIATION ->
                     collectMtpMedia(device, storageId, handle, sinceTimestamp, result)
                 MtpConstants.FORMAT_EXIF_JPEG,
-                0x3800, // images non-standard (ex: ARW sur certains appareils)
+                0x3800,
                 MtpConstants.FORMAT_MP4_CONTAINER,
                 MtpConstants.FORMAT_AVI,
                 MtpConstants.FORMAT_UNDEFINED_VIDEO ->
