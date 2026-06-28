@@ -33,17 +33,10 @@ class WatchdogService : Service() {
     private fun startWatching() {
         watchThread = Thread {
             val prefs = getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-            TransferLog.add(this, "[Watch] Sony detecte - tentative dans 10s")
+            TransferLog.add(this, "[Watch] Sony detecte - attente du volume MSC...")
 
-            // Wait 10s for Sony to mount MSC volume
-            sleepMs(10_000)
-
-            val maxAttempts = 6
-            var delay = 20_000L
-
-            for (attempt in 1..maxAttempts) {
-                if (Thread.currentThread().isInterrupted) return@Thread
-
+            // Poll every 3 seconds until volume appears (no timeout)
+            while (!Thread.currentThread().isInterrupted) {
                 val timestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
                 if (timestamp == -1L) {
                     TransferLog.add(this, "[Watch] Date non configuree - arret")
@@ -52,12 +45,11 @@ class WatchdogService : Service() {
 
                 val volumes = removableVolumes()
                 if (volumes.isNotEmpty()) {
-                    TransferLog.add(this, "[Watch] Volume detecte: ${volumes.map { it.first }}")
                     for ((volId, _) in volumes) {
                         val safUri = prefs.getString("${MainActivity.KEY_SAF_URI_PREFIX}$volId", null)
                         if (safUri != null) {
                             val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
-                            TransferLog.add(this, "[Watch] Demarrage transfert pour $volId")
+                            TransferLog.add(this, "[Watch] Volume MSC detecte: $volId - demarrage transfert")
                             ContextCompat.startForegroundService(
                                 this,
                                 Intent(this, TransferService::class.java).apply {
@@ -69,19 +61,14 @@ class WatchdogService : Service() {
                             )
                             stopSelf(); return@Thread
                         } else {
-                            TransferLog.add(this, "[Watch] SAF manquant pour $volId - ouvrir l'app")
+                            TransferLog.add(this, "[Watch] Volume trouve ($volId) mais pas d'acces SAF - ouvrir l'app et utiliser Scan MSC")
                             stopSelf(); return@Thread
                         }
                     }
-                } else {
-                    TransferLog.add(this, "[Watch] Tentative $attempt/$maxAttempts - volume MSC pas encore pret, retry dans ${delay/1000}s")
-                    sleepMs(delay)
-                    delay = minOf(delay + 20_000L, 60_000L)
                 }
-            }
 
-            TransferLog.add(this, "[Watch] Timeout - aucun volume MSC detecte")
-            stopSelf()
+                sleepMs(3_000)
+            }
         }.also { it.start() }
     }
 
