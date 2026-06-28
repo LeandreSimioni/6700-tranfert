@@ -29,6 +29,8 @@ class TransferService : Service() {
     }
 
     private var maxDimension = 4096
+    private var totalFiles = 0
+    private var doneFiles = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -37,7 +39,7 @@ class TransferService : Service() {
         NotifHelper.init(this)
         startForeground(
             NotifHelper.NOTIF_TRANSFER,
-            buildTransferNotif(getString(R.string.notif_starting))
+            buildProgressNotif(getString(R.string.notif_starting), 0, 0)
         )
     }
 
@@ -62,35 +64,37 @@ class TransferService : Service() {
 
     private fun doSafTransfer(rootUri: Uri, sinceTimestamp: Long) {
         try {
-            updateTransferNotif(getString(R.string.notif_scanning))
+            updateProgress(getString(R.string.notif_scanning), 0, 0)
             val rootDoc = DocumentFile.fromTreeUri(this, rootUri)
             if (rootDoc == null || !rootDoc.canRead()) {
                 log("[MSC] SAF: volume inaccessible (permission expiree? re-accorder dans l'app)")
-                updateTransferNotif(getString(R.string.notif_no_storage))
+                updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
             log("[MSC] SAF: volume ouvert OK - ${rootDoc.name}")
             val dcim = rootDoc.findFile("DCIM")
             if (dcim == null || !dcim.isDirectory) {
                 log("[MSC] SAF: pas de dossier DCIM")
-                updateTransferNotif(getString(R.string.notif_no_photos))
+                updateProgress(getString(R.string.notif_no_photos), 0, 0)
                 return
             }
             val files = mutableListOf<DocumentFile>()
             collectDocumentFiles(dcim, sinceTimestamp, files)
             log("[MSC] SAF: ${files.size} fichier(s) a copier")
-            if (files.isEmpty()) { updateTransferNotif(getString(R.string.notif_no_photos)); return }
+            if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             files.sortBy { it.lastModified() }
-            var count = 0
+            totalFiles = files.size
+            doneFiles = 0
+            updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             var latestTs = sinceTimestamp
             for (f in files) {
                 try {
                     saveSafFile(f)
                     val ts = f.lastModified()
                     if (ts > latestTs) latestTs = ts
-                    count++
+                    doneFiles++
                     log("[MSC] OK: ${f.name}")
-                    updateTransferNotif(getString(R.string.notif_progress, count, files.size))
+                    updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                 } catch (e: Exception) {
                     log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}")
                 }
@@ -99,8 +103,8 @@ class TransferService : Service() {
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTs).apply()
             }
-            log("[MSC] Termine: $count fichier(s) copie(s)")
-            NotifHelper.showDone(this, count)
+            log("[MSC] Termine: $doneFiles fichier(s) copie(s)")
+            NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
 
@@ -150,30 +154,34 @@ class TransferService : Service() {
 
     private fun doMscTransfer(mountPath: String, sinceTimestamp: Long) {
         try {
-            updateTransferNotif(getString(R.string.notif_scanning))
+            updateProgress(getString(R.string.notif_scanning), 0, 0)
             log("[MSC] Scan dans $mountPath")
             File(mountPath).list()?.take(20)?.let { log("[MSC] Racine: ${it.joinToString(", ")}") }
                 ?: log("[MSC] Racine inaccessible (permission manquante?)")
             val dcim = File(mountPath, "DCIM")
-            if (!dcim.exists()) { log("[MSC] Pas de dossier DCIM dans $mountPath"); updateTransferNotif(getString(R.string.notif_no_photos)); return }
+            if (!dcim.exists()) { log("[MSC] Pas de dossier DCIM dans $mountPath"); updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             val files = mutableListOf<File>()
             collectMediaFiles(dcim, sinceTimestamp, files)
             log("[MSC] ${files.size} fichier(s) a copier")
-            if (files.isEmpty()) { updateTransferNotif(getString(R.string.notif_no_photos)); return }
+            if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             files.sortBy { it.lastModified() }
-            var count = 0; var latestTs = sinceTimestamp
+            totalFiles = files.size
+            doneFiles = 0
+            updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
+            var latestTs = sinceTimestamp
             for (f in files) {
                 try {
                     saveMscFile(f)
                     if (f.lastModified() > latestTs) latestTs = f.lastModified()
-                    count++; log("[MSC] OK: ${f.name}")
-                    updateTransferNotif(getString(R.string.notif_progress, count, files.size))
+                    doneFiles++
+                    log("[MSC] OK: ${f.name}")
+                    updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                 } catch (e: Exception) { log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}") }
             }
             getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTs).apply()
-            log("[MSC] Termine: $count fichier(s)")
-            NotifHelper.showDone(this, count)
+            log("[MSC] Termine: $doneFiles fichier(s)")
+            NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
 
@@ -241,15 +249,23 @@ class TransferService : Service() {
         } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
     }
 
-    private fun buildTransferNotif(text: String) = NotificationCompat.Builder(this, NotifHelper.CHANNEL_TRANSFER)
-        .setSmallIcon(android.R.drawable.ic_menu_upload)
-        .setContentTitle(getString(R.string.app_name))
-        .setContentText(text)
-        .setOngoing(true)
-        .build()
+    private fun buildProgressNotif(text: String, progress: Int, max: Int): android.app.Notification {
+        val builder = NotificationCompat.Builder(this, NotifHelper.CHANNEL_TRANSFER)
+            .setSmallIcon(android.R.drawable.ic_menu_upload)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(text)
+            .setOngoing(true)
+        if (max > 0) {
+            builder.setProgress(max, progress, false)
+            builder.setSubText("$progress / $max")
+        } else {
+            builder.setProgress(0, 0, true) // indeterminate
+        }
+        return builder.build()
+    }
 
-    private fun updateTransferNotif(text: String) {
+    private fun updateProgress(text: String, progress: Int, max: Int) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        nm.notify(NotifHelper.NOTIF_TRANSFER, buildTransferNotif(text))
+        nm.notify(NotifHelper.NOTIF_TRANSFER, buildProgressNotif(text, progress, max))
     }
 }
