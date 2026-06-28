@@ -12,16 +12,23 @@
     <string name="btn_grant_permissions">Accorder les permissions</string>
     <string name="btn_check_permissions">Vérifier les permissions</string>
 
+    <!-- Canaux de notification -->
+    <string name="notif_channel_detect">Sony détecté</string>
     <string name="transfer_channel_name">Transfert en cours</string>
+    <string name="notif_channel_done">Transfert terminé</string>
     <string name="config_channel_name">Configuration requise</string>
-    <string name="notif_open_app">Ouvrez l’app pour définir la date de départ</string>
+
+    <!-- Notifications -->
+    <string name="notif_sony_detected_title">Sony détecté</string>
+    <string name="notif_sony_detected_text">Montage du volume en cours…</string>
+    <string name="notif_open_app">Ouvrez l\'app pour définir la date de départ</string>
     <string name="notif_starting">Démarrage du transfert…</string>
     <string name="notif_scanning">Scan du stockage caméra…</string>
     <string name="notif_no_storage">Aucun stockage détecté — vérifiez le mode USB</string>
     <string name="notif_no_photos">Aucun nouveau fichier à transférer</string>
     <string name="notif_progress">%1$d / %2$d fichiers transférés</string>
     <string name="notif_done">Terminé — %1$d fichier(s) copié(s)</string>
-    <string name="notif_usb_error">Impossible d’ouvrir le périphérique USB</string>
+    <string name="notif_usb_error">Impossible d\'ouvrir le périphérique USB</string>
     <string name="notif_mtp_error">Erreur MTP — essayez le mode MSC sur le Sony</string>
 
     <string name="info_how_it_works">Mode MSC (recommandé) :
@@ -32,7 +39,7 @@
 
 Tous les fichiers (JPG, ARW, MP4…) postérieurs à la date seront copiés dans DCIM/Camera.
 
-Si le transfert ne démarre pas seul, appuyez sur \"Scan MSC maintenant\".</string>
+Si le transfert ne démarre pas seul, appuyez sur "Scan MSC maintenant".</string>
 
     <string name="btn_check_update">Vérifier les mises à jour</string>
     <string name="btn_scan_msc">Scan MSC maintenant</string>

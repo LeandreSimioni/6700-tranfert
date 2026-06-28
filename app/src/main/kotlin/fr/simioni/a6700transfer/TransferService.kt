@@ -1,7 +1,5 @@
 package fr.simioni.a6700transfer
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.ContentValues
 import android.content.Context
@@ -27,16 +25,17 @@ class TransferService : Service() {
         const val EXTRA_SAF_URI = "saf_uri"
         const val MODE_MTP = "mtp"
         const val MODE_MSC = "msc"
-        private const val NOTIF_ID = 100
-        private const val CHANNEL_ID = "transfer"
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification(getString(R.string.notif_starting)))
+        NotifHelper.init(this)
+        startForeground(
+            NotifHelper.NOTIF_TRANSFER,
+            buildTransferNotif(getString(R.string.notif_starting))
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -56,27 +55,26 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
-    // SAF-based transfer using DocumentFile
     private fun doSafTransfer(rootUri: Uri, sinceTimestamp: Long) {
         try {
-            updateNotification(getString(R.string.notif_scanning))
+            updateTransferNotif(getString(R.string.notif_scanning))
             val rootDoc = DocumentFile.fromTreeUri(this, rootUri)
             if (rootDoc == null || !rootDoc.canRead()) {
                 log("[MSC] SAF: volume inaccessible (permission expiree? re-accorder dans l'app)")
-                updateNotification(getString(R.string.notif_no_storage))
+                updateTransferNotif(getString(R.string.notif_no_storage))
                 return
             }
             log("[MSC] SAF: volume ouvert OK - ${rootDoc.name}")
             val dcim = rootDoc.findFile("DCIM")
             if (dcim == null || !dcim.isDirectory) {
                 log("[MSC] SAF: pas de dossier DCIM")
-                updateNotification(getString(R.string.notif_no_photos))
+                updateTransferNotif(getString(R.string.notif_no_photos))
                 return
             }
             val files = mutableListOf<DocumentFile>()
             collectDocumentFiles(dcim, sinceTimestamp, files)
             log("[MSC] SAF: ${files.size} fichier(s) a copier")
-            if (files.isEmpty()) { updateNotification(getString(R.string.notif_no_photos)); return }
+            if (files.isEmpty()) { updateTransferNotif(getString(R.string.notif_no_photos)); return }
             files.sortBy { it.lastModified() }
             var count = 0
             var latestTs = sinceTimestamp
@@ -87,7 +85,7 @@ class TransferService : Service() {
                     if (ts > latestTs) latestTs = ts
                     count++
                     log("[MSC] OK: ${f.name}")
-                    updateNotification(getString(R.string.notif_progress, count, files.size))
+                    updateTransferNotif(getString(R.string.notif_progress, count, files.size))
                 } catch (e: Exception) {
                     log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}")
                 }
@@ -97,7 +95,7 @@ class TransferService : Service() {
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTs).apply()
             }
             log("[MSC] Termine: $count fichier(s) copie(s)")
-            updateNotification(getString(R.string.notif_done, count))
+            NotifHelper.showDone(this, count)
         } finally { stopSelf() }
     }
 
@@ -108,7 +106,6 @@ class TransferService : Service() {
                 val name = child.name ?: continue
                 if (!isMediaFile(name)) continue
                 val ts = child.lastModified()
-                // include if ts unknown (0) or newer than sinceTimestamp
                 if (ts == 0L || ts > sinceTimestamp) result.add(child)
             }
         }
@@ -121,7 +118,6 @@ class TransferService : Service() {
         val isImage = mime.startsWith("image/")
         val inputStream = contentResolver.openInputStream(doc.uri)
             ?: throw Exception("impossible d'ouvrir $name")
-        // Copy to temp file first (needed for ImageProcessor and legacy path)
         val temp = File(cacheDir, "saf_$name")
         try {
             inputStream.use { it.copyTo(temp.outputStream()) }
@@ -147,19 +143,18 @@ class TransferService : Service() {
         } finally { temp.delete() }
     }
 
-    // File-based transfer (fallback)
     private fun doMscTransfer(mountPath: String, sinceTimestamp: Long) {
         try {
-            updateNotification(getString(R.string.notif_scanning))
+            updateTransferNotif(getString(R.string.notif_scanning))
             log("[MSC] Scan dans $mountPath")
             File(mountPath).list()?.take(20)?.let { log("[MSC] Racine: ${it.joinToString(", ")}") }
                 ?: log("[MSC] Racine inaccessible (permission manquante?)")
             val dcim = File(mountPath, "DCIM")
-            if (!dcim.exists()) { log("[MSC] Pas de dossier DCIM dans $mountPath"); updateNotification(getString(R.string.notif_no_photos)); return }
+            if (!dcim.exists()) { log("[MSC] Pas de dossier DCIM dans $mountPath"); updateTransferNotif(getString(R.string.notif_no_photos)); return }
             val files = mutableListOf<File>()
             collectMediaFiles(dcim, sinceTimestamp, files)
             log("[MSC] ${files.size} fichier(s) a copier")
-            if (files.isEmpty()) { updateNotification(getString(R.string.notif_no_photos)); return }
+            if (files.isEmpty()) { updateTransferNotif(getString(R.string.notif_no_photos)); return }
             files.sortBy { it.lastModified() }
             var count = 0; var latestTs = sinceTimestamp
             for (f in files) {
@@ -167,12 +162,13 @@ class TransferService : Service() {
                     saveMscFile(f)
                     if (f.lastModified() > latestTs) latestTs = f.lastModified()
                     count++; log("[MSC] OK: ${f.name}")
-                    updateNotification(getString(R.string.notif_progress, count, files.size))
+                    updateTransferNotif(getString(R.string.notif_progress, count, files.size))
                 } catch (e: Exception) { log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}") }
             }
             getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTs).apply()
-            log("[MSC] Termine: $count fichier(s)"); updateNotification(getString(R.string.notif_done, count))
+            log("[MSC] Termine: $count fichier(s)")
+            NotifHelper.showDone(this, count)
         } finally { stopSelf() }
     }
 
@@ -239,16 +235,15 @@ class TransferService : Service() {
         } catch (e: Exception) { contentResolver.delete(uri, null, null); throw e }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, getString(R.string.transfer_channel_name), NotificationManager.IMPORTANCE_LOW)
-            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
-        }
-    }
-    private fun buildNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_menu_upload).setContentTitle(getString(R.string.app_name))
-        .setContentText(text).setOngoing(true).build()
-    private fun updateNotification(text: String) {
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIF_ID, buildNotification(text))
+    private fun buildTransferNotif(text: String) = NotificationCompat.Builder(this, NotifHelper.CHANNEL_TRANSFER)
+        .setSmallIcon(android.R.drawable.ic_menu_upload)
+        .setContentTitle(getString(R.string.app_name))
+        .setContentText(text)
+        .setOngoing(true)
+        .build()
+
+    private fun updateTransferNotif(text: String) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.notify(NotifHelper.NOTIF_TRANSFER, buildTransferNotif(text))
     }
 }

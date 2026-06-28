@@ -11,8 +11,8 @@ android {
         applicationId = "fr.simioni.a6700transfer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.9"
+        versionCode = 10
+        versionName = "1.10"
     }
 
     signingConfigs {

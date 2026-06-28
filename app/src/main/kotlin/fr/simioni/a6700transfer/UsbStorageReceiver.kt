@@ -3,7 +3,6 @@ package fr.simioni.a6700transfer
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.core.content.ContextCompat
 
 class UsbStorageReceiver : BroadcastReceiver() {
@@ -27,6 +26,7 @@ class UsbStorageReceiver : BroadcastReceiver() {
             TransferLog.add(context, "[MSC] Acces SAF manquant pour $volId - ouvrir l'app et taper Scan MSC")
             return
         }
+        NotifHelper.cancelDetected(context)
         TransferLog.add(context, "[MSC] Demarrage transfert auto SAF")
         ContextCompat.startForegroundService(context, Intent(context, TransferService::class.java).apply {
             putExtra(TransferService.EXTRA_SAF_URI, safUriStr)
