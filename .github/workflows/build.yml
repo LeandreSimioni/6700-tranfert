@@ -1,0 +1,60 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches:
+      - main
+      - claude/clever-wozniak-5vxdsu
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
+
+      - name: Build debug APK
+        run: gradle assembleDebug
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 6700-transfer-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Supprimer ancienne release
+        run: gh release delete latest-build --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Supprimer ancien tag
+        run: git push origin :refs/tags/latest-build || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Creer release avec APK
+        run: |
+          gh release create latest-build \
+            --title "6700 Transfer - Derniere build (debug)" \
+            --notes "APK debug genere le $(date '+%d/%m/%Y a %H:%M UTC')." \
+            --prerelease \
+            "app/build/outputs/apk/debug/app-debug.apk#6700-transfer-debug.apk"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
