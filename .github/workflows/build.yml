@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/clever-wozniak-5vxdsu
 
 permissions:
   contents: write
@@ -24,10 +23,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle 8.7
+      - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: "8.7"
+          gradle-version: "8.9"
 
       - name: Build debug APK
         run: gradle assembleDebug
