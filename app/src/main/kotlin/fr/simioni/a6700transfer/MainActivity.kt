@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var pendingScanAfterGrant = false
+    private var permissionStep = 0
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -127,29 +128,38 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        requestAllPermissions()
+        requestNextPermission()
         updateUi()
         refreshLogs()
     }
 
-    private fun requestAllPermissions() {
-        // MANAGE_EXTERNAL_STORAGE: requires special system settings page
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            !Environment.isExternalStorageManager()) {
+    /**
+     * Request permissions one at a time so each system dialog/settings page
+     * doesn't get blocked by another one opening simultaneously.
+     */
+    private fun requestNextPermission() {
+        // Step 1: MANAGE_EXTERNAL_STORAGE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:$packageName")))
+            return
         }
-
-        // Battery optimization exemption
+        // Step 2: Install unknown apps
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:$packageName")))
+            return
+        }
+        // Step 3: Battery optimization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(PowerManager::class.java)
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
                 startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:$packageName")))
+                return
             }
         }
-
-        // Runtime permissions
+        // Step 4: Runtime permissions
         val toRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -185,11 +195,12 @@ class MainActivity : AppCompatActivity() {
         val btnPerm = findViewById<Button>(R.id.btn_permission)
         tvPerm.text = if (allOk) getString(R.string.permissions_ok) else getString(R.string.permissions_missing)
         btnPerm.text = if (allOk) getString(R.string.btn_check_permissions) else getString(R.string.btn_grant_permissions)
-        btnPerm.setOnClickListener { requestAllPermissions() }
+        btnPerm.setOnClickListener { requestNextPermission() }
     }
 
     private fun hasAllPermissions(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         }
