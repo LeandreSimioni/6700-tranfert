@@ -2,12 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
@@ -29,12 +25,6 @@
         android:allowBackup="true"
         android:requestLegacyExternalStorage="true">
 
-        <!--
-            USB_DEVICE_ATTACHED sur MainActivity :
-            Android propose "Toujours ouvrir avec 6700 Transfer" a la premiere connexion.
-            Apres validation, brancher le Sony ouvre l'app directement (premier plan,
-            aucune restriction Android). L'app detecte le Sony et lance WatchdogService.
-        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -51,56 +41,45 @@
                 android:resource="@xml/device_filter" />
         </activity>
 
-        <service
-            android:name=".TransferService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false" />
+        <service android:name=".TransferService" android:foregroundServiceType="dataSync" android:exported="false" />
+        <service android:name=".WatchdogService" android:foregroundServiceType="connectedDevice" android:exported="false" />
 
-        <service
-            android:name=".WatchdogService"
-            android:foregroundServiceType="connectedDevice"
-            android:exported="false" />
-
-        <!-- Fallback broadcast: detection Sony USB -->
-        <receiver
-            android:name=".UsbReceiver"
-            android:exported="true">
+        <receiver android:name=".UsbReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
-            <meta-data
-                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/device_filter" />
+            <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" android:resource="@xml/device_filter" />
         </receiver>
 
-        <!-- Fallback: montage volume MSC -->
-        <receiver
-            android:name=".UsbStorageReceiver"
-            android:exported="true">
+        <receiver android:name=".UsbStorageReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_MOUNTED" />
                 <data android:scheme="file" />
             </intent-filter>
         </receiver>
 
-        <!-- Redemarrage apres boot -->
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
+        <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
-        <!-- Fin de telechargement mise a jour -->
-        <receiver
-            android:name=".DownloadCompleteReceiver"
-            android:exported="true">
+        <receiver android:name=".DownloadCompleteReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
     </application>
 
