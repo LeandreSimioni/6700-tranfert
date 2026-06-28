@@ -11,8 +11,8 @@ android {
         applicationId = "fr.simioni.a6700transfer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.4"
+        versionCode = 5
+        versionName = "1.5"
     }
 
     buildFeatures {
@@ -38,5 +38,4 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
-    implementation("androidx.cardview:cardview:1.0.0")
 }

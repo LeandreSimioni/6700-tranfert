@@ -2,48 +2,38 @@
 <resources>
     <string name="app_name">6700 Transfer</string>
 
-    <string name="status_not_configured">Non configure - definissez une date de depart</string>
+    <string name="status_not_configured">Non configuré — définissez une date de départ</string>
     <string name="status_last_transfer">Depuis le %1$s</string>
-    <string name="btn_set_date">Definir la date de depart</string>
-    <string name="date_saved">Date enregistree</string>
+    <string name="btn_set_date">Définir la date de départ</string>
+    <string name="date_saved">Date enregistrée ✓</string>
 
-    <string name="permissions_ok">Permissions OK</string>
-    <string name="permissions_missing">Permission manquante - appuyez pour accorder</string>
+    <string name="permissions_ok">Permissions OK ✓</string>
+    <string name="permissions_missing">Permission manquante — appuyez pour accorder</string>
     <string name="btn_grant_permissions">Accorder les permissions</string>
-    <string name="btn_check_permissions">Verifier les permissions</string>
+    <string name="btn_check_permissions">Vérifier les permissions</string>
 
     <string name="transfer_channel_name">Transfert en cours</string>
     <string name="config_channel_name">Configuration requise</string>
-    <string name="notif_open_app">Ouvrez l&#8217;app pour definir la date de depart</string>
-    <string name="notif_starting">Connexion&#8230;</string>
-    <string name="notif_scanning">Scan des photos&#8230;</string>
-    <string name="notif_no_storage">Aucun stockage detecte - verifiez le mode USB du Sony</string>
-    <string name="notif_no_photos">Aucune nouvelle photo</string>
-    <string name="notif_progress">%1$d / %2$d photos copiees</string>
-    <string name="notif_done">Termine : %1$d photo(s) copiee(s)</string>
-    <string name="notif_usb_error">Impossible d&#8217;ouvrir le peripherique USB</string>
-    <string name="notif_mtp_error">Erreur MTP - mettez le Sony en mode Transfert de fichiers</string>
+    <string name="notif_open_app">Ouvrez l’app pour définir la date de départ</string>
+    <string name="notif_starting">Démarrage du transfert…</string>
+    <string name="notif_scanning">Scan du stockage caméra…</string>
+    <string name="notif_no_storage">Aucun stockage détecté — vérifiez le mode USB</string>
+    <string name="notif_no_photos">Aucun nouveau fichier à transférer</string>
+    <string name="notif_progress">%1$d / %2$d fichiers transférés</string>
+    <string name="notif_done">Terminé — %1$d fichier(s) copié(s)</string>
+    <string name="notif_usb_error">Impossible d’ouvrir le périphérique USB</string>
+    <string name="notif_mtp_error">Erreur MTP — essayez le mode MSC sur le Sony</string>
 
-    <string name="log_empty">Aucun log pour l&#8217;instant</string>
-    <string name="btn_copy_log">Copier les logs</string>
-    <string name="btn_clear_log">Effacer</string>
-    <string name="log_copied">Logs copies dans le presse-papiers</string>
-    <string name="log_cleared">Logs effaces</string>
+    <string name="info_how_it_works">Mode MSC (recommandé) :
+1. Définissez la date du dernier transfert.
+2. Sony a6700 : Menu → Réseau → USB → Stocker/recharger (MSC).
+3. Branchez le câble USB.
+4. Le transfert démarre automatiquement.
 
-    <string name="btn_check_update">Verifier les mises a jour</string>
-    <string name="update_checking">Verification en cours&#8230;</string>
-    <string name="update_downloading">Telechargement de la mise a jour&#8230;</string>
-    <string name="update_ready">Mise a jour prete - installation lancee</string>
-    <string name="update_up_to_date">Deja a jour (v%1$s)</string>
-    <string name="update_error">Erreur de connexion - reessayez plus tard</string>
+Tous les fichiers (JPG, ARW, MP4…) postérieurs à la date seront copiés dans DCIM/Camera.
 
-    <string name="update_channel">Mises a jour</string>
-    <string name="update_title">Mise a jour disponible</string>
-    <string name="update_text">Appuyez pour installer la nouvelle version de 6700 Transfer</string>
+Si le transfert ne démarre pas seul, appuyez sur \"Scan MSC maintenant\".</string>
 
-    <string name="info_how_it_works">MTP (recommande) : Menu Sony &#8250; USB &#8250; Transfert de fichiers. Le dialog Android n&#8217;apparait qu&#8217;une seule fois.
-
-MSC : Menu Sony &#8250; USB &#8250; Stockage de masse. Aucun dialog, entierement automatique.
-
-Les photos sont copiees dans DCIM/Camera avec le prefixe A6700_</string>
+    <string name="btn_check_update">Vérifier les mises à jour</string>
+    <string name="btn_scan_msc">Scan MSC maintenant</string>
 </resources>

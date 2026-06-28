@@ -1,102 +1,46 @@
 package fr.simioni.a6700transfer
 
+import android.app.DownloadManager
 import android.content.Context
-import android.content.Intent
-import android.os.Handler
-import android.os.Looper
-import androidx.core.content.FileProvider
-import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
+import android.net.Uri
+import android.os.Environment
 import java.net.URL
 
 object UpdateChecker {
-
     private const val VERSION_URL =
         "https://raw.githubusercontent.com/LeandreSimioni/6700-tranfert/main/version.properties"
     private const val APK_URL =
         "https://github.com/LeandreSimioni/6700-tranfert/releases/download/latest-build/6700-transfer-debug.apk"
 
-    /** Verification silencieuse au lancement */
-    fun check(context: Context) {
-        Thread {
-            try {
-                val remote = fetchRemoteVersionCode()
-                if (remote > BuildConfig.VERSION_CODE) {
-                    val apk = download(context, remote)
-                    launchInstall(context, apk)
-                }
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    fun checkManual(
-        context: Context,
-        onStatus: (String) -> Unit,
-        onInstall: (Intent) -> Unit
-    ) {
-        val ui = Handler(Looper.getMainLooper())
-        Thread {
-            ui.post { onStatus(context.getString(R.string.update_checking)) }
-            try {
-                val remote = fetchRemoteVersionCode()
-                if (remote <= BuildConfig.VERSION_CODE) {
-                    ui.post { onStatus(context.getString(R.string.update_up_to_date, BuildConfig.VERSION_NAME)) }
-                    return@Thread
-                }
-                ui.post { onStatus(context.getString(R.string.update_downloading)) }
-                val apk = download(context, remote)
-                val intent = buildInstallIntent(context, apk)
-                ui.post {
-                    onStatus(context.getString(R.string.update_ready))
-                    onInstall(intent)
-                }
-            } catch (e: Exception) {
-                val detail = "${e.javaClass.simpleName}: ${e.message}"
-                ui.post { onStatus("${context.getString(R.string.update_error)} ($detail)") }
-            }
-        }.start()
-    }
-
-    private fun fetchRemoteVersionCode(): Int {
-        val conn = URL(VERSION_URL).openConnection() as HttpURLConnection
-        conn.connectTimeout = 5_000
-        conn.readTimeout = 5_000
+    fun check(currentCode: Int): UpdateResult {
         return try {
-            conn.inputStream.bufferedReader().readLines()
+            val text = URL(VERSION_URL).readText(Charsets.UTF_8)
+            val remoteCode = text.lines()
                 .firstOrNull { it.startsWith("versionCode=") }
-                ?.removePrefix("versionCode=")?.trim()?.toIntOrNull() ?: 0
-        } finally {
-            conn.disconnect()
+                ?.removePrefix("versionCode=")
+                ?.trim()?.toIntOrNull()
+                ?: return UpdateResult.Error("versionCode introuvable dans $VERSION_URL")
+            if (remoteCode <= currentCode) UpdateResult.UpToDate(currentCode)
+            else UpdateResult.UpdateAvailable(remoteCode)
+        } catch (e: Exception) {
+            UpdateResult.Error("${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
-    private fun download(context: Context, remoteVersion: Int): File {
-        val apkFile = File(context.getExternalFilesDir(null), "6700-update-v$remoteVersion.apk")
-        val conn = URL(APK_URL).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 120_000
-        try {
-            conn.inputStream.use { input ->
-                FileOutputStream(apkFile).use { input.copyTo(it) }
-            }
-        } finally {
-            conn.disconnect()
-        }
-        return apkFile
+    fun downloadApk(context: Context) {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val req = DownloadManager.Request(Uri.parse(APK_URL))
+            .setTitle("6700 Transfer mise à jour")
+            .setDescription("Téléchargement en cours...")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "6700-transfer.apk")
+            .setMimeType("application/vnd.android.package-archive")
+        dm.enqueue(req)
     }
+}
 
-    private fun buildInstallIntent(context: Context, apkFile: File): Intent {
-        val uri = FileProvider.getUriForFile(
-            context, "${context.packageName}.fileprovider", apkFile
-        )
-        return Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-    }
-
-    fun launchInstall(context: Context, apkFile: File) {
-        context.startActivity(buildInstallIntent(context, apkFile))
-    }
+sealed class UpdateResult {
+    data class UpToDate(val code: Int) : UpdateResult()
+    data class UpdateAvailable(val remoteCode: Int) : UpdateResult()
+    data class Error(val message: String) : UpdateResult()
 }
