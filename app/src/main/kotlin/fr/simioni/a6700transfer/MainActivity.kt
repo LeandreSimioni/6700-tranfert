@@ -115,19 +115,23 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Scan MSC démarré — voir les logs", Toast.LENGTH_SHORT).show()
     }
 
+    private fun toStoragePath(path: String): String =
+        path.replace("/mnt/media_rw/", "/storage/")
+
     private fun findRemovableVolumePaths(): List<String> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val sm = getSystemService(StorageManager::class.java)
             sm.storageVolumes
                 .filter { !it.isPrimary && it.isRemovable }
-                .mapNotNull { it.directory?.absolutePath }
+                .mapNotNull { it.directory?.absolutePath?.let { p -> toStoragePath(p) } }
         } else {
             getExternalFilesDirs(null)
                 .drop(1)
                 .mapNotNull { dir ->
-                    var f: File? = dir
+                    var f: java.io.File? = dir
                     repeat(4) { f = f?.parentFile }
                     f?.absolutePath?.takeIf { !it.startsWith("/storage/emulated") }
+                        ?.let { toStoragePath(it) }
                 }
         }
     }

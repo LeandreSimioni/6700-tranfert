@@ -8,10 +8,11 @@ import androidx.core.content.ContextCompat
 class UsbStorageReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MEDIA_MOUNTED) return
-        val mountPath = intent.data?.path ?: return
+        val rawPath = intent.data?.path ?: return
+        val mountPath = rawPath.replace("/mnt/media_rw/", "/storage/")
         if (mountPath.startsWith("/storage/emulated/")) return
 
-        TransferLog.add(context, "[MSC] Volume monte: $mountPath")
+        TransferLog.add(context, "[MSC] Volume monte: $mountPath (raw: $rawPath)")
 
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
         val timestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
