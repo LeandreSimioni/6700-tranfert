@@ -4,9 +4,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
-import android.os.storage.StorageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -44,13 +42,15 @@ class WatchdogService : Service() {
                     stopSelf(); return@Thread
                 }
 
-                val volumes = removableVolumes()
+                val volumes = VolumeHelper.findRemovableVolumes(this)
+                TransferLog.add(this, "[Watch] Volumes detectes: $volumes")
+
                 if (volumes.isNotEmpty()) {
-                    val (volId, _) = volumes.first()
+                    val volId = volumes.first()
                     val safUri = prefs.getString("${MainActivity.KEY_SAF_URI_PREFIX}$volId", null)
                     if (safUri != null) {
                         val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
-                        TransferLog.add(this, "[Watch] Volume MSC detecte: $volId - demarrage transfert")
+                        TransferLog.add(this, "[Watch] Volume MSC $volId -> demarrage transfert")
                         ContextCompat.startForegroundService(
                             this,
                             Intent(this, TransferService::class.java).apply {
@@ -62,13 +62,11 @@ class WatchdogService : Service() {
                         )
                         stopSelf(); return@Thread
                     } else {
-                        // SAF access missing - open app so user can grant it
-                        TransferLog.add(this, "[Watch] Volume $volId detecte mais acces SAF manquant - ouverture app")
+                        TransferLog.add(this, "[Watch] Volume $volId detecte - SAF manquant, ouverture app")
                         showSafNeededNotification()
-                        val openApp = Intent(this, MainActivity::class.java).apply {
+                        startActivity(Intent(this, MainActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        }
-                        startActivity(openApp)
+                        })
                         stopSelf(); return@Thread
                     }
                 }
@@ -79,36 +77,29 @@ class WatchdogService : Service() {
     }
 
     private fun showSafNeededNotification() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-        val notif = NotificationCompat.Builder(this, NotifHelper.CHANNEL_DONE)
-            .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText("Volume Sony detecte - appuyez pour autoriser l'acces et lancer le transfert")
-            .setContentIntent(pi)
-            .setAutoCancel(true)
-            .build()
+        val pi = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
+            PendingIntent.FLAG_IMMUTABLE
+        )
         try {
-            NotificationManagerCompat.from(this).notify(NotifHelper.NOTIF_DONE, notif)
+            NotificationManagerCompat.from(this).notify(
+                NotifHelper.NOTIF_DONE,
+                NotificationCompat.Builder(this, NotifHelper.CHANNEL_DONE)
+                    .setSmallIcon(android.R.drawable.ic_menu_camera)
+                    .setContentTitle(getString(R.string.app_name))
+                    .setContentText("Volume Sony detecte - appuyez pour autoriser l'acces")
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .build()
+            )
         } catch (_: SecurityException) {}
     }
 
     private fun sleepMs(ms: Long) {
         try { Thread.sleep(ms) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
-    }
-
-    private fun removableVolumes(): List<Pair<String, String>> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptyList()
-        val sm = getSystemService(StorageManager::class.java)
-        return sm.storageVolumes
-            .filter { !it.isPrimary && it.isRemovable }
-            .mapNotNull { vol ->
-                val path = vol.directory?.absolutePath?.replace("/mnt/media_rw/", "/storage/")
-                    ?: return@mapNotNull null
-                Pair(path.substringAfterLast("/"), path)
-            }
     }
 
     private fun buildNotif(text: String) = NotificationCompat.Builder(this, NotifHelper.CHANNEL_TRANSFER)

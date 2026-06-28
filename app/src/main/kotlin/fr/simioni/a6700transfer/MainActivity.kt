@@ -117,9 +117,9 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Sony détecté ! Définissez d'abord la date de départ.", Toast.LENGTH_LONG).show()
             refreshLogs(); return
         }
-        TransferLog.add(this, "[USB] Sony detecte - transfert automatique dans 10s")
+        TransferLog.add(this, "[USB] Sony detecte - surveillance MSC active")
         ContextCompat.startForegroundService(this, Intent(this, WatchdogService::class.java))
-        Toast.makeText(this, "Sony détecté — transfert automatique dans 10 secondes…", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Sony détecté — sélectionnez MSC sur l'appareil pour lancer le transfert", Toast.LENGTH_LONG).show()
         refreshLogs()
     }
 
@@ -187,25 +187,25 @@ class MainActivity : AppCompatActivity() {
         if (toRequest.isNotEmpty()) permissionLauncher.launch(toRequest.toTypedArray())
     }
 
-    private fun startManualMscScan() {
+    fun startManualMscScan() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val timestamp = prefs.getLong(KEY_LAST_TRANSFER, -1L)
         if (timestamp == -1L) { Toast.makeText(this, "Configurez d'abord la date de départ", Toast.LENGTH_SHORT).show(); return }
 
-        val paths = findRemovableVolumePaths()
-        if (paths.isEmpty()) {
+        val volumes = VolumeHelper.findRemovableVolumePaths(this)
+        TransferLog.add(this, "[MSC] Volumes trouves: ${volumes.map { it.first }}")
+
+        if (volumes.isEmpty()) {
             TransferLog.add(this, "[MSC] Aucun volume externe detecte")
             Toast.makeText(this, "Aucun volume externe détecté — branchez le Sony en mode MSC", Toast.LENGTH_LONG).show()
             refreshLogs(); return
         }
 
-        val missingAccess = paths.filter { path ->
-            val volId = path.substringAfterLast("/")
+        val missingAccess = volumes.filter { (volId, _) ->
             prefs.getString("$KEY_SAF_URI_PREFIX$volId", null) == null
         }
         if (missingAccess.isNotEmpty()) {
-            val path = missingAccess.first()
-            val volId = path.substringAfterLast("/")
+            val (volId, path) = missingAccess.first()
             TransferLog.add(this, "[MSC] Demande acces SAF pour $volId")
             refreshLogs()
             Toast.makeText(this, "Sélectionnez le volume Sony puis appuyez sur \"Utiliser ce dossier\"", Toast.LENGTH_LONG).show()
@@ -215,10 +215,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val maxDim = prefs.getInt(KEY_MAX_DIMENSION, 4096)
-        for (path in paths) {
-            val volId = path.substringAfterLast("/")
+        for ((volId, _) in volumes) {
             val safUriStr = prefs.getString("$KEY_SAF_URI_PREFIX$volId", null) ?: continue
-            TransferLog.add(this, "[MSC] Scan SAF: $path")
+            TransferLog.add(this, "[MSC] Scan SAF: $volId")
             ContextCompat.startForegroundService(this, Intent(this, TransferService::class.java).apply {
                 putExtra(TransferService.EXTRA_SAF_URI, safUriStr)
                 putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
@@ -227,7 +226,6 @@ class MainActivity : AppCompatActivity() {
             })
         }
         refreshLogs()
-        Toast.makeText(this, "Scan MSC démarré — voir les logs", Toast.LENGTH_SHORT).show()
     }
 
     private fun launchSafPicker(volumePath: String) {
@@ -242,21 +240,6 @@ class MainActivity : AppCompatActivity() {
             safLauncher.launch(pickerIntent)
         } else {
             safLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
-        }
-    }
-
-    private fun findRemovableVolumePaths(): List<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val sm = getSystemService(StorageManager::class.java)
-            sm.storageVolumes
-                .filter { !it.isPrimary && it.isRemovable }
-                .mapNotNull { it.directory?.absolutePath?.replace("/mnt/media_rw/", "/storage/") }
-        } else {
-            getExternalFilesDirs(null).drop(1).mapNotNull { dir ->
-                var f: java.io.File? = dir
-                repeat(4) { f = f?.parentFile }
-                f?.absolutePath?.takeIf { !it.startsWith("/storage/emulated") }
-            }
         }
     }
 
