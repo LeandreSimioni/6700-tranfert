@@ -52,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        // Version visible dans le sous-titre de la toolbar
+        supportActionBar?.subtitle = "v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})"
         UpdateChecker.check(this)
     }
 
@@ -61,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(transferReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(transferReceiver, filter)
         }
         updateUi()
@@ -74,9 +77,6 @@ class MainActivity : AppCompatActivity() {
     private fun updateUi() {
         val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_TRANSFER, -1L)
-
-        findViewById<TextView>(R.id.tv_version).text =
-            "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
 
         val tvStatus = findViewById<TextView>(R.id.tv_status)
         val tvPermission = findViewById<TextView>(R.id.tv_permission_status)
