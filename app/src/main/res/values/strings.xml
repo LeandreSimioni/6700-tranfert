@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">6700 Transfer</string>
+
+    <string name="status_not_configured">Non configuré — définissez une date de départ</string>
+    <string name="status_last_transfer">Depuis le %1$s</string>
+    <string name="btn_set_date">Définir la date de départ</string>
+    <string name="date_saved">Date enregistrée ✓</string>
+
+    <string name="permissions_ok">Toutes les permissions sont accordées ✓</string>
+    <string name="permissions_missing">Permissions manquantes — appuyez pour les accorder</string>
+    <string name="btn_grant_permissions">Accorder les permissions</string>
+    <string name="btn_check_permissions">Vérifier les permissions</string>
+
+    <string name="transfer_channel_name">Transfert en cours</string>
+    <string name="config_channel_name">Configuration requise</string>
+    <string name="notif_open_app">Ouvrez l'app pour configurer la date de départ</string>
+    <string name="notif_starting">Démarrage du transfert…</string>
+    <string name="notif_no_dcim">Dossier DCIM introuvable sur ce support</string>
+    <string name="notif_no_photos">Aucune nouvelle photo à transférer</string>
+    <string name="notif_progress">%1$d / %2$d photos transférées</string>
+    <string name="notif_done">Terminé — %1$d photo(s) copiée(s)</string>
+
+    <string name="info_how_it_works">Comment ça marche :\n\n1. Définissez la date du dernier transfert (ou de la première utilisation).\n2. Insérez la carte SD du Sony a6700 dans un lecteur USB-OTG.\n3. Connectez le lecteur à votre téléphone.\n4. L'app démarre automatiquement et transfère les nouvelles photos dans DCIM/Camera.\n\nSeules les photos JPEG plus récentes que la date configurée sont copiées. La carte SD n'est jamais modifiée.</string>
+</resources>
