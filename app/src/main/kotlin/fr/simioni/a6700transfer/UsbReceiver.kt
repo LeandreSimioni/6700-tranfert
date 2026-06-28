@@ -6,6 +6,7 @@ import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
+import androidx.core.content.ContextCompat
 
 class UsbReceiver : BroadcastReceiver() {
 
@@ -19,10 +20,15 @@ class UsbReceiver : BroadcastReceiver() {
         if (device.vendorId != SONY_VID) return
         TransferLog.add(context, "[USB] Sony detecte: ${device.productName} (PID=${device.productId.toString(16)})")
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L) == -1L)
+        if (prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L) == -1L) {
             TransferLog.add(context, "[USB] Date non configuree - ouvrez l'app")
-        else
-            TransferLog.add(context, "[USB] Sony detecte - selectionnez MSC sur le Sony pour demarrer le transfert")
+            return
+        }
+        TransferLog.add(context, "[USB] Demarrage surveillance MSC...")
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, WatchdogService::class.java)
+        )
     }
 
     @Suppress("DEPRECATION")

@@ -10,6 +10,7 @@ object NotifHelper {
     const val CHANNEL_TRANSFER = "transfer"
     const val CHANNEL_DONE = "transfer_done"
 
+    const val NOTIF_WATCHDOG = 99
     const val NOTIF_TRANSFER = 100
     const val NOTIF_DONE = 101
 

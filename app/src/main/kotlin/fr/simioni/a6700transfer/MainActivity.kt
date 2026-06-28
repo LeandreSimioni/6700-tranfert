@@ -11,7 +11,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.storage.StorageManager
+import android.provider.Settings
 import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -63,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         TransferLog.add(this, "[App] Demarrage v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE}) API=${Build.VERSION.SDK_INT}")
+
         findViewById<Button>(R.id.btn_copy_log).setOnClickListener {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("logs", TransferLog.get(this)))
@@ -91,7 +94,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onResume() { super.onResume(); updateUi(); refreshLogs() }
+    override fun onResume() {
+        super.onResume()
+        updateUi()
+        refreshLogs()
+        requestBatteryOptimizationExemption()
+    }
+
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val pm = getSystemService(PowerManager::class.java)
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            TransferLog.add(this, "[App] Demande exemption optimisation batterie")
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:$packageName")))
+        }
+    }
 
     private fun refreshLogs() {
         findViewById<TextView>(R.id.tv_log).text = TransferLog.get(this).ifEmpty { "Aucun log pour l'instant." }

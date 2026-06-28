@@ -18,6 +18,7 @@
     <string name="config_channel_name">Configuration requise</string>
 
     <!-- Notifications -->
+    <string name="notif_watchdog_waiting">Sony détecté — sélectionnez MSC sur l’appareil…</string>
     <string name="notif_open_app">Ouvrez l\'app pour définir la date de départ</string>
     <string name="notif_starting">Démarrage du transfert…</string>
     <string name="notif_scanning">Scan du stockage caméra…</string>
@@ -26,7 +27,6 @@
     <string name="notif_progress">%1$d / %2$d fichiers transférés</string>
     <string name="notif_done">%1$d fichier(s) copié(s) — vous pouvez débrancher le Sony</string>
     <string name="notif_usb_error">Impossible d\'ouvrir le périphérique USB</string>
-    <string name="notif_mtp_error">Erreur MTP — essayez le mode MSC sur le Sony</string>
 
     <string name="info_how_it_works">Mode MSC (recommandé) :\n1. Définissez la date du dernier transfert.\n2. Sony a6700 : Menu → Réseau → USB → Stocker/recharger (MSC).\n3. Branchez le câble USB.\n4. Sélectionnez \"Transfert d\'image\" sur l\'écran du Sony.\n5. Le transfert démarre automatiquement.\n\nTous les fichiers (JPG, ARW, MP4…) postérieurs à la date seront copiés dans DCIM/Camera.\n\nSi le transfert ne démarre pas seul, appuyez sur \"Scan MSC maintenant\".</string>
 
