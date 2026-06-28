@@ -4,7 +4,6 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -14,11 +13,7 @@ import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.documentfile.provider.DocumentFile
-import androidx.exifinterface.media.ExifInterface
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
 
 class TransferService : Service() {
 
@@ -68,50 +63,6 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
-    /**
-     * Read the actual capture date from EXIF (JPG/ARW) or MediaMetadataRetriever (MP4).
-     * Falls back to lastModified() if EXIF is unavailable.
-     * Returns 0L if date cannot be determined.
-     */
-    private fun getDocumentDate(doc: DocumentFile): Long {
-        val name = (doc.name ?: return 0L).lowercase()
-        val ext = name.substringAfterLast('.')
-        return when (ext) {
-            "jpg", "jpeg", "arw", "raw" -> readExifDate(doc.uri)
-            "mp4", "mov" -> readVideoDate(doc.uri)
-            else -> doc.lastModified().takeIf { it != 0L } ?: 0L
-        }
-    }
-
-    private fun readExifDate(uri: Uri): Long {
-        return try {
-            contentResolver.openInputStream(uri)?.use { stream ->
-                val exif = ExifInterface(stream)
-                val dateStr = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
-                    ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
-                    ?: return@use 0L
-                // Sony format: "2024:06:28 18:30:00" (local time, no timezone)
-                val sdf = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
-                sdf.parse(dateStr)?.time ?: 0L
-            } ?: 0L
-        } catch (e: Exception) { 0L }
-    }
-
-    private fun readVideoDate(uri: Uri): Long {
-        return try {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(this, uri)
-            val dateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
-            retriever.release()
-            if (dateStr != null && dateStr != "19040101T000000.000Z") {
-                // Format: "20240628T183000.000Z" (UTC)
-                val sdf = SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.US)
-                sdf.timeZone = TimeZone.getTimeZone("UTC")
-                sdf.parse(dateStr.substringBefore('.'))?.time ?: 0L
-            } else 0L
-        } catch (e: Exception) { 0L }
-    }
-
     private fun alreadyExists(displayName: String, isImage: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
@@ -127,12 +78,6 @@ class TransferService : Service() {
         return exists
     }
 
-    private fun clearSafUri(id: String) {
-        getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().remove("${MainActivity.KEY_SAF_URI_PREFIX}$id").apply()
-        log("[MSC] SAF URI efface pour $id")
-    }
-
     private fun doSafTransfer(rootUri: Uri, sinceTimestamp: Long) {
         try {
             updateProgress(getString(R.string.notif_scanning), 0, 0)
@@ -140,11 +85,13 @@ class TransferService : Service() {
             if (rootDoc == null || !rootDoc.canRead()) {
                 val id = volId
                 if (id != null) {
-                    clearSafUri(id)
+                    getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit().remove("${MainActivity.KEY_SAF_URI_PREFIX}$id").apply()
                     startActivity(Intent(this, MainActivity::class.java).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     })
-                } else log("[MSC] SAF: volume inaccessible - ouvrir l'app et refaire Scan MSC")
+                }
+                log("[MSC] SAF: volume inaccessible - re-ouvrir l'app pour re-autoriser")
                 updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
@@ -165,18 +112,17 @@ class TransferService : Service() {
                 val displayName = "A6700_${f.name}"
                 val mime = mimeFor(f.name ?: "")
                 if (alreadyExists(displayName, mime.startsWith("image/"))) {
-                    skippedFiles++; log("[MSC] SKIP (deja copie): ${f.name}")
+                    skippedFiles++
+                    log("[MSC] SKIP (deja copie): ${f.name}")
                     totalFiles = maxOf(0, totalFiles - 1)
-                    updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                     continue
                 }
                 try {
-                    saveSafFile(f)
-                    doneFiles++
+                    saveSafFile(f); doneFiles++
                     log("[MSC] OK: ${f.name}")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                 } catch (e: Exception) {
-                    log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}")
+                    log("[MSC] ERREUR ${f.name}: ${e.message}")
                 }
             }
             if (doneFiles > 0) {
@@ -193,16 +139,9 @@ class TransferService : Service() {
             if (child.isDirectory) { collectDocumentFiles(child, sinceTimestamp, result); continue }
             val name = child.name ?: continue
             if (!isMediaFile(name)) continue
-            val ts = getDocumentDate(child)
-            when {
-                ts == 0L -> {
-                    // Can't read date - include with warning (dedup prevents re-copy)
-                    log("[MSC] Date illisible: $name - inclus par precaution")
-                    result.add(child)
-                }
-                ts > sinceTimestamp -> result.add(child)
-                // ts <= sinceTimestamp: photo prise avant la coupure, on ignore
-            }
+            val ts = child.lastModified()
+            // ts == 0 means SAF can't read the date -> skip to be safe (avoids pulling old photos)
+            if (ts > sinceTimestamp) result.add(child)
         }
     }
 
@@ -254,9 +193,7 @@ class TransferService : Service() {
                 val mime = mimeFor(f.name)
                 if (alreadyExists(displayName, mime.startsWith("image/"))) {
                     skippedFiles++; log("[MSC] SKIP: ${f.name}")
-                    totalFiles = maxOf(0, totalFiles - 1)
-                    updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
-                    continue
+                    totalFiles = maxOf(0, totalFiles - 1); continue
                 }
                 try {
                     saveMscFile(f); doneFiles++
@@ -277,23 +214,8 @@ class TransferService : Service() {
         val children = dir.listFiles() ?: return
         for (f in children) {
             if (f.isDirectory) { collectMediaFiles(f, sinceTimestamp, result); continue }
-            if (!isMediaFile(f.name)) continue
-            val ts = readExifDateFromFile(f)
-            when {
-                ts == 0L -> if (f.lastModified() > sinceTimestamp) result.add(f)
-                ts > sinceTimestamp -> result.add(f)
-            }
+            if (isMediaFile(f.name) && f.lastModified() > sinceTimestamp) result.add(f)
         }
-    }
-
-    private fun readExifDateFromFile(file: File): Long {
-        return try {
-            val exif = ExifInterface(file.absolutePath)
-            val dateStr = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
-                ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
-                ?: return 0L
-            SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(dateStr)?.time ?: 0L
-        } catch (e: Exception) { 0L }
     }
 
     private fun isMediaFile(name: String): Boolean {
