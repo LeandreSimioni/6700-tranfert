@@ -23,13 +23,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
 
       - name: Build debug APK
-        run: gradle assembleDebug
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleDebug
 
       - name: Verify APK exists
         run: ls -lh app/build/outputs/apk/debug/app-debug.apk
@@ -55,21 +59,15 @@ jobs:
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$REPO/releases" \
-            -d '{"tag_name":"latest-build","name":"6700 Transfer - Derniere build (debug)","body":"APK debug genere automatiquement.","prerelease":true,"draft":false}')
-
-          echo "Release: $(echo "$RELEASE_JSON" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r.get("html_url",str(r)))')"
+            -d '{"tag_name":"latest-build","name":"6700 Transfer - Derniere build","body":"APK genere automatiquement.","prerelease":true,"draft":false}')
 
           UPLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r["upload_url"].split("{")[0])')
-          echo "Upload URL: $UPLOAD_URL"
-          echo "APK size: $(du -sh $APK_PATH | cut -f1)"
 
-          echo "Uploading APK..."
-          ASSET_JSON=$(curl -sf -X POST \
+          curl -sf -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/vnd.android.package-archive" \
             --data-binary @"$APK_PATH" \
-            "${UPLOAD_URL}?name=6700-transfer-debug.apk")
+            "${UPLOAD_URL}?name=6700-transfer-debug.apk"
 
-          echo "Asset URL: $(echo "$ASSET_JSON" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r.get("browser_download_url",str(r)))')"
           echo "Done!"

@@ -15,13 +15,26 @@ android {
         versionName = "1.6"
     }
 
+    signingConfigs {
+        create("fixed") {
+            storeFile = rootProject.file("keystore.jks")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "6700transfer"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "6700transfer"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "6700transfer"
+        }
+    }
+
     buildFeatures {
         buildConfig = true
         viewBinding = false
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
+            signingConfig = signingConfigs.getByName("fixed")
             isMinifyEnabled = false
         }
     }
