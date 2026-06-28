@@ -11,8 +11,8 @@ android {
         applicationId = "fr.simioni.a6700transfer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.8"
+        versionCode = 9
+        versionName = "1.9"
     }
 
     signingConfigs {
@@ -24,26 +24,17 @@ android {
         }
     }
 
-    buildFeatures {
-        buildConfig = true
-    }
+    buildFeatures { buildConfig = true }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("fixed")
-        }
-        release {
-            signingConfig = signingConfigs.getByName("fixed")
-            isMinifyEnabled = false
-        }
+        debug { signingConfig = signingConfigs.getByName("fixed") }
+        release { signingConfig = signingConfigs.getByName("fixed"); isMinifyEnabled = false }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
+    kotlinOptions { jvmTarget = "11" }
 }
 
 dependencies {
@@ -51,4 +42,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }

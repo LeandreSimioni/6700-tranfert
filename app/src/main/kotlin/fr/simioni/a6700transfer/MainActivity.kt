@@ -11,9 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.os.storage.StorageManager
-import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -30,58 +28,64 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val PREFS_NAME = "a6700_prefs"
         const val KEY_LAST_TRANSFER = "last_transfer_timestamp"
+        const val KEY_SAF_URI_PREFIX = "saf_uri_"
     }
+
+    private var pendingScanAfterGrant = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { updateUi() }
 
-    private val manageStorageLauncher = registerForActivityResult(
+    private val safLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { updateUi() }
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val uri = result.data?.data ?: return@registerForActivityResult
+            contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            // volume id = last path segment without trailing ":"
+            val volId = uri.lastPathSegment?.trimEnd(':') ?: "unknown"
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putString("$KEY_SAF_URI_PREFIX$volId", uri.toString()).apply()
+            TransferLog.add(this, "[MSC] Acces SAF accorde: $volId")
+            refreshLogs()
+            if (pendingScanAfterGrant) {
+                pendingScanAfterGrant = false
+                startManualMscScan()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         TransferLog.add(this, "[App] Demarrage v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE}) API=${Build.VERSION.SDK_INT}")
-
         findViewById<Button>(R.id.btn_copy_log).setOnClickListener {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("logs", TransferLog.get(this)))
             Toast.makeText(this, "Logs copiés ✓", Toast.LENGTH_SHORT).show()
         }
-        findViewById<Button>(R.id.btn_clear_log).setOnClickListener {
-            TransferLog.clear(this)
-            refreshLogs()
-        }
+        findViewById<Button>(R.id.btn_clear_log).setOnClickListener { TransferLog.clear(this); refreshLogs() }
         findViewById<Button>(R.id.btn_scan_msc).setOnClickListener { startManualMscScan() }
         findViewById<Button>(R.id.btn_check_update).setOnClickListener { checkUpdate() }
     }
 
-    override fun onResume() {
-        super.onResume()
-        updateUi()
-        refreshLogs()
-    }
+    override fun onResume() { super.onResume(); updateUi(); refreshLogs() }
 
     private fun refreshLogs() {
-        findViewById<TextView>(R.id.tv_log).text =
-            TransferLog.get(this).ifEmpty { "Aucun log pour l'instant." }
+        findViewById<TextView>(R.id.tv_log).text = TransferLog.get(this).ifEmpty { "Aucun log pour l'instant." }
     }
 
     private fun updateUi() {
-        val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getLong(KEY_LAST_TRANSFER, -1L)
-
+        val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_LAST_TRANSFER, -1L)
         findViewById<TextView>(R.id.tv_version).text = "v${BuildConfig.VERSION_NAME}"
         findViewById<TextView>(R.id.tv_status).text = if (timestamp == -1L)
             getString(R.string.status_not_configured)
-        else
-            getString(R.string.status_last_transfer,
-                SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(timestamp)))
-
+        else getString(R.string.status_last_transfer,
+            SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(timestamp)))
         findViewById<Button>(R.id.btn_set_date).setOnClickListener { showDateTimePicker() }
-
         val tvPerm = findViewById<TextView>(R.id.tv_permission_status)
         val btnPerm = findViewById<Button>(R.id.btn_permission)
         if (hasAllPermissions()) {
@@ -95,9 +99,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hasAllPermissions(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) return false
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) return false
@@ -109,76 +110,87 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            Toast.makeText(this,
-                "Accordez \"Accès à tous les fichiers\" pour lire le stockage USB",
-                Toast.LENGTH_LONG).show()
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                Uri.parse("package:$packageName"))
-            manageStorageLauncher.launch(intent)
-            return
-        }
         val toRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
         } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
+                toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         if (toRequest.isNotEmpty()) permissionLauncher.launch(toRequest.toTypedArray())
     }
 
     private fun startManualMscScan() {
-        val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getLong(KEY_LAST_TRANSFER, -1L)
-        if (timestamp == -1L) {
-            Toast.makeText(this, "Configurez d'abord la date de départ", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            Toast.makeText(this, "Permission \"Accès à tous les fichiers\" requise", Toast.LENGTH_LONG).show()
-            checkPermissions()
-            return
-        }
+        val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_LAST_TRANSFER, -1L)
+        if (timestamp == -1L) { Toast.makeText(this, "Configurez d'abord la date de départ", Toast.LENGTH_SHORT).show(); return }
+
         val paths = findRemovableVolumePaths()
         if (paths.isEmpty()) {
             TransferLog.add(this, "[MSC] Aucun volume externe detecte")
             Toast.makeText(this, "Aucun volume externe détecté — branchez le Sony en mode MSC", Toast.LENGTH_LONG).show()
+            refreshLogs(); return
+        }
+
+        // Check SAF access for each volume - grant if missing
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val missingAccess = paths.filter { path ->
+            val volId = path.substringAfterLast("/")
+            prefs.getString("$KEY_SAF_URI_PREFIX$volId", null) == null
+        }
+        if (missingAccess.isNotEmpty()) {
+            val path = missingAccess.first()
+            val volId = path.substringAfterLast("/")
+            TransferLog.add(this, "[MSC] Demande acces SAF pour $volId")
             refreshLogs()
+            Toast.makeText(this, "Sélectionnez le volume Sony puis appuyez sur \"Utiliser ce dossier\"", Toast.LENGTH_LONG).show()
+            pendingScanAfterGrant = true
+            launchSafPicker(path)
             return
         }
+
+        // All volumes have SAF access
         for (path in paths) {
-            TransferLog.add(this, "[MSC] Scan manuel: $path")
-            val intent = Intent(this, TransferService::class.java).apply {
-                putExtra(TransferService.EXTRA_MOUNT_PATH, path)
+            val volId = path.substringAfterLast("/")
+            val safUriStr = prefs.getString("$KEY_SAF_URI_PREFIX$volId", null) ?: continue
+            TransferLog.add(this, "[MSC] Scan SAF: $path")
+            ContextCompat.startForegroundService(this, Intent(this, TransferService::class.java).apply {
+                putExtra(TransferService.EXTRA_SAF_URI, safUriStr)
                 putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
                 putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
-            }
-            ContextCompat.startForegroundService(this, intent)
+            })
         }
         refreshLogs()
         Toast.makeText(this, "Scan MSC démarré — voir les logs", Toast.LENGTH_SHORT).show()
     }
 
-    private fun toStoragePath(path: String): String =
-        path.replace("/mnt/media_rw/", "/storage/")
+    private fun launchSafPicker(volumePath: String) {
+        val volId = volumePath.substringAfterLast("/")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val sm = getSystemService(StorageManager::class.java)
+            val volume = sm.storageVolumes.firstOrNull { vol ->
+                vol.directory?.absolutePath?.contains(volId) == true
+            }
+            val pickerIntent = volume?.createOpenDocumentTreeIntent()
+                ?: Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            safLauncher.launch(pickerIntent)
+        } else {
+            safLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
+        }
+    }
 
     private fun findRemovableVolumePaths(): List<String> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val sm = getSystemService(StorageManager::class.java)
             sm.storageVolumes
                 .filter { !it.isPrimary && it.isRemovable }
-                .mapNotNull { it.directory?.absolutePath?.let { p -> toStoragePath(p) } }
+                .mapNotNull { it.directory?.absolutePath?.replace("/mnt/media_rw/", "/storage/") }
         } else {
-            getExternalFilesDirs(null)
-                .drop(1)
-                .mapNotNull { dir ->
-                    var f: java.io.File? = dir
-                    repeat(4) { f = f?.parentFile }
-                    f?.absolutePath?.takeIf { !it.startsWith("/storage/emulated") }
-                        ?.let { toStoragePath(it) }
-                }
+            getExternalFilesDirs(null).drop(1).mapNotNull { dir ->
+                var f: java.io.File? = dir
+                repeat(4) { f = f?.parentFile }
+                f?.absolutePath?.takeIf { !it.startsWith("/storage/emulated") }
+            }
         }
     }
 
@@ -190,10 +202,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 tvUpdate.text = when (result) {
                     is UpdateResult.UpToDate -> "✓ v${BuildConfig.VERSION_NAME} est à jour"
-                    is UpdateResult.UpdateAvailable -> {
-                        UpdateChecker.downloadApk(this)
-                        "Mise à jour disponible (build ${result.remoteCode}) — téléchargement lancé"
-                    }
+                    is UpdateResult.UpdateAvailable -> { UpdateChecker.downloadApk(this); "Mise à jour (build ${result.remoteCode}) — téléchargement lancé" }
                     is UpdateResult.Error -> "Erreur: ${result.message}"
                 }
             }
@@ -207,8 +216,7 @@ class MainActivity : AppCompatActivity() {
                 val ts = Calendar.getInstance().apply {
                     set(year, month, day, hour, minute, 0); set(Calendar.MILLISECOND, 0)
                 }.timeInMillis
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit().putLong(KEY_LAST_TRANSFER, ts).apply()
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putLong(KEY_LAST_TRANSFER, ts).apply()
                 updateUi()
                 Toast.makeText(this, R.string.date_saved, Toast.LENGTH_SHORT).show()
             }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
