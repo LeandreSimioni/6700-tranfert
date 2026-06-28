@@ -23,9 +23,12 @@ class TransferService : Service() {
         const val EXTRA_MODE = "mode"
         const val EXTRA_MOUNT_PATH = "mount_path"
         const val EXTRA_SAF_URI = "saf_uri"
+        const val EXTRA_MAX_DIMENSION = "max_dimension"
         const val MODE_MTP = "mtp"
         const val MODE_MSC = "msc"
     }
+
+    private var maxDimension = 4096
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -41,6 +44,8 @@ class TransferService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val sinceTimestamp = intent?.getLongExtra(EXTRA_SINCE_TIMESTAMP, -1L) ?: -1L
         if (sinceTimestamp == -1L) { stopSelf(); return START_NOT_STICKY }
+
+        maxDimension = intent?.getIntExtra(EXTRA_MAX_DIMENSION, 4096) ?: 4096
 
         val safUriStr = intent?.getStringExtra(EXTRA_SAF_URI)
         val mountPath = intent?.getStringExtra(EXTRA_MOUNT_PATH)
@@ -122,9 +127,9 @@ class TransferService : Service() {
         try {
             inputStream.use { it.copyTo(temp.outputStream()) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val toInsert = if (mime == "image/jpeg") {
+                val toInsert = if (mime == "image/jpeg" && maxDimension > 0) {
                     val processed = File(cacheDir, "proc_$name")
-                    ImageProcessor.process(temp, processed)
+                    ImageProcessor.process(temp, processed, maxDimension)
                     processed
                 } else temp
                 try { insertToMediaStore(toInsert, displayName, mime, isImage) }
@@ -136,7 +141,7 @@ class TransferService : Service() {
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
                 ).also { it.mkdirs() }
                 val dest = File(destDir, displayName)
-                if (mime == "image/jpeg") ImageProcessor.process(temp, dest)
+                if (mime == "image/jpeg" && maxDimension > 0) ImageProcessor.process(temp, dest, maxDimension)
                 else temp.copyTo(dest, overwrite = true)
                 MediaScannerConnection.scanFile(this, arrayOf(dest.absolutePath), null, null)
             }
@@ -201,9 +206,9 @@ class TransferService : Service() {
         val mime = mimeFor(src.name)
         val isImage = mime.startsWith("image/")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (mime == "image/jpeg") {
+            if (mime == "image/jpeg" && maxDimension > 0) {
                 val processed = File(cacheDir, "proc_${src.name}")
-                try { ImageProcessor.process(src, processed); insertToMediaStore(processed, displayName, mime, isImage) }
+                try { ImageProcessor.process(src, processed, maxDimension); insertToMediaStore(processed, displayName, mime, isImage) }
                 finally { processed.delete() }
             } else insertToMediaStore(src, displayName, mime, isImage)
         } else {
@@ -212,7 +217,8 @@ class TransferService : Service() {
             else Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
             ).also { it.mkdirs() }
             val dest = File(destDir, displayName)
-            if (mime == "image/jpeg") ImageProcessor.process(src, dest) else src.copyTo(dest, overwrite = true)
+            if (mime == "image/jpeg" && maxDimension > 0) ImageProcessor.process(src, dest, maxDimension)
+            else src.copyTo(dest, overwrite = true)
             MediaScannerConnection.scanFile(this, arrayOf(dest.absolutePath), null, null)
         }
     }

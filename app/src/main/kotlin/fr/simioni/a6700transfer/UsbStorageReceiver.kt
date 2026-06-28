@@ -26,12 +26,13 @@ class UsbStorageReceiver : BroadcastReceiver() {
             TransferLog.add(context, "[MSC] Acces SAF manquant pour $volId - ouvrir l'app et taper Scan MSC")
             return
         }
-        NotifHelper.cancelDetected(context)
-        TransferLog.add(context, "[MSC] Demarrage transfert auto SAF")
+        val maxDim = prefs.getInt(MainActivity.KEY_MAX_DIMENSION, 4096)
+        TransferLog.add(context, "[MSC] Demarrage transfert auto SAF (taille max: ${if (maxDim == 0) "originale" else "${maxDim}px"})")
         ContextCompat.startForegroundService(context, Intent(context, TransferService::class.java).apply {
             putExtra(TransferService.EXTRA_SAF_URI, safUriStr)
             putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
             putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
+            putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
         })
     }
 }

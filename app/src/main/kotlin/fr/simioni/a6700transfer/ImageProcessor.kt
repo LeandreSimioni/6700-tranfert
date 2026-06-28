@@ -13,7 +13,6 @@ import java.util.Locale
 
 object ImageProcessor {
 
-    private const val MAX_DIMENSION = 4096
     private const val JPEG_QUALITY = 87
 
     private val EXIF_DATE_FORMAT = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
@@ -61,7 +60,7 @@ object ImageProcessor {
         } catch (_: Exception) { 0L }
     }
 
-    fun process(input: File, output: File) {
+    fun process(input: File, output: File, maxDim: Int = 4096) {
         val opts = BitmapFactory.Options().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
@@ -69,7 +68,7 @@ object ImageProcessor {
         val original = BitmapFactory.decodeFile(input.absolutePath, opts)
             ?: throw IOException("Impossible de decoder ${input.name}")
 
-        val (newW, newH) = scaledDimensions(original.width, original.height)
+        val (newW, newH) = scaledDimensions(original.width, original.height, maxDim)
         val scaled = if (newW == original.width && newH == original.height) original
         else Bitmap.createScaledBitmap(original, newW, newH, true)
             .also { if (it !== original) original.recycle() }
@@ -81,10 +80,10 @@ object ImageProcessor {
         copyExif(input.absolutePath, output.absolutePath)
     }
 
-    private fun scaledDimensions(w: Int, h: Int): Pair<Int, Int> {
-        if (w <= MAX_DIMENSION && h <= MAX_DIMENSION) return Pair(w, h)
-        return if (w >= h) Pair(MAX_DIMENSION, (h.toLong() * MAX_DIMENSION / w).toInt())
-        else Pair((w.toLong() * MAX_DIMENSION / h).toInt(), MAX_DIMENSION)
+    private fun scaledDimensions(w: Int, h: Int, maxDim: Int): Pair<Int, Int> {
+        if (maxDim <= 0 || (w <= maxDim && h <= maxDim)) return Pair(w, h)
+        return if (w >= h) Pair(maxDim, (h.toLong() * maxDim / w).toInt())
+        else Pair((w.toLong() * maxDim / h).toInt(), maxDim)
     }
 
     private fun copyExif(src: String, dst: String) {

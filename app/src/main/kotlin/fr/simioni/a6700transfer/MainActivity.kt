@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.storage.StorageManager
 import android.widget.Button
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
         const val PREFS_NAME = "a6700_prefs"
         const val KEY_LAST_TRANSFER = "last_transfer_timestamp"
         const val KEY_SAF_URI_PREFIX = "saf_uri_"
+        const val KEY_MAX_DIMENSION = "max_dimension"
     }
 
     private var pendingScanAfterGrant = false
@@ -45,7 +47,6 @@ class MainActivity : AppCompatActivity() {
             contentResolver.takePersistableUriPermission(
                 uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-            // volume id = last path segment without trailing ":"
             val volId = uri.lastPathSegment?.trimEnd(':') ?: "unknown"
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putString("$KEY_SAF_URI_PREFIX$volId", uri.toString()).apply()
@@ -70,6 +71,24 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_clear_log).setOnClickListener { TransferLog.clear(this); refreshLogs() }
         findViewById<Button>(R.id.btn_scan_msc).setOnClickListener { startManualMscScan() }
         findViewById<Button>(R.id.btn_check_update).setOnClickListener { checkUpdate() }
+
+        // Resize option
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val rg = findViewById<RadioGroup>(R.id.rg_resize)
+        val savedDim = prefs.getInt(KEY_MAX_DIMENSION, 4096)
+        rg.check(when (savedDim) {
+            0    -> R.id.rb_original
+            3000 -> R.id.rb_3000
+            else -> R.id.rb_4096
+        })
+        rg.setOnCheckedChangeListener { _, checkedId ->
+            val dim = when (checkedId) {
+                R.id.rb_original -> 0
+                R.id.rb_3000    -> 3000
+                else            -> 4096
+            }
+            prefs.edit().putInt(KEY_MAX_DIMENSION, dim).apply()
+        }
     }
 
     override fun onResume() { super.onResume(); updateUi(); refreshLogs() }
@@ -122,7 +141,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startManualMscScan() {
-        val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_LAST_TRANSFER, -1L)
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val timestamp = prefs.getLong(KEY_LAST_TRANSFER, -1L)
         if (timestamp == -1L) { Toast.makeText(this, "Configurez d'abord la date de départ", Toast.LENGTH_SHORT).show(); return }
 
         val paths = findRemovableVolumePaths()
@@ -132,8 +152,6 @@ class MainActivity : AppCompatActivity() {
             refreshLogs(); return
         }
 
-        // Check SAF access for each volume - grant if missing
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val missingAccess = paths.filter { path ->
             val volId = path.substringAfterLast("/")
             prefs.getString("$KEY_SAF_URI_PREFIX$volId", null) == null
@@ -149,7 +167,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // All volumes have SAF access
+        val maxDim = prefs.getInt(KEY_MAX_DIMENSION, 4096)
         for (path in paths) {
             val volId = path.substringAfterLast("/")
             val safUriStr = prefs.getString("$KEY_SAF_URI_PREFIX$volId", null) ?: continue
@@ -158,6 +176,7 @@ class MainActivity : AppCompatActivity() {
                 putExtra(TransferService.EXTRA_SAF_URI, safUriStr)
                 putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
                 putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
+                putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
             })
         }
         refreshLogs()
