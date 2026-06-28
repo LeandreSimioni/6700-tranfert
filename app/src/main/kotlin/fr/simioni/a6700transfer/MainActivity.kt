@@ -95,13 +95,11 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putInt(KEY_MAX_DIMENSION, dim).apply()
         }
 
-        // L'app a ete ouverte par Android suite au branchement Sony
         handleUsbIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // singleTop: si l'app est deja ouverte, onNewIntent recoit le nouvel intent USB
         handleUsbIntent(intent)
     }
 
@@ -119,9 +117,9 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Sony détecté ! Définissez d'abord la date de départ.", Toast.LENGTH_LONG).show()
             refreshLogs(); return
         }
-        TransferLog.add(this, "[USB] Sony detecte via Activity - demarrage surveillance MSC")
+        TransferLog.add(this, "[USB] Sony detecte - transfert automatique dans 10s")
         ContextCompat.startForegroundService(this, Intent(this, WatchdogService::class.java))
-        Toast.makeText(this, "Sony détecté — sélectionnez MSC sur l'appareil pour lancer le transfert", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Sony détecté — transfert automatique dans 10 secondes…", Toast.LENGTH_LONG).show()
         refreshLogs()
     }
 
