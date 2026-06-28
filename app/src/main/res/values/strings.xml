@@ -2,13 +2,13 @@
 <resources>
     <string name="app_name">6700 Transfer</string>
 
-    <string name="status_not_configured">Non configure — definissez une date de depart</string>
+    <string name="status_not_configured">Non configure - definissez une date de depart</string>
     <string name="status_last_transfer">Depuis le %1$s</string>
     <string name="btn_set_date">Definir la date de depart</string>
     <string name="date_saved">Date enregistree</string>
 
     <string name="permissions_ok">Permissions OK</string>
-    <string name="permissions_missing">Permission manquante — appuyez pour accorder</string>
+    <string name="permissions_missing">Permission manquante - appuyez pour accorder</string>
     <string name="btn_grant_permissions">Accorder les permissions</string>
     <string name="btn_check_permissions">Verifier les permissions</string>
 
@@ -17,17 +17,21 @@
     <string name="notif_open_app">Ouvrez l&#8217;app pour definir la date de depart</string>
     <string name="notif_starting">Connexion MTP&#8230;</string>
     <string name="notif_scanning">Scan du stockage camera&#8230;</string>
-    <string name="notif_no_storage">Aucun stockage MTP — verifiez le mode USB du Sony</string>
+    <string name="notif_no_storage">Aucun stockage MTP - verifiez le mode USB du Sony</string>
     <string name="notif_no_photos">Aucune nouvelle photo a transferer</string>
     <string name="notif_progress">%1$d / %2$d photos transferees</string>
-    <string name="notif_done">Termine — %1$d photo(s) copiee(s)</string>
+    <string name="notif_done">Termine - %1$d photo(s) copiee(s)</string>
     <string name="notif_usb_error">Impossible d&#8217;ouvrir le peripherique USB</string>
-    <string name="notif_mtp_error">Erreur MTP — mettez le Sony en mode Transfert de fichiers</string>
+    <string name="notif_mtp_error">Erreur MTP - mettez le Sony en mode Transfert de fichiers</string>
+
+    <string name="update_channel">Mises a jour</string>
+    <string name="update_title">Mise a jour disponible</string>
+    <string name="update_text">Appuyez pour installer la nouvelle version de 6700 Transfer</string>
 
     <string name="info_how_it_works">Comment ca marche :
 
 1. Definissez la date du dernier transfert.
-2. Sur le Sony a6700 : Menu > USB > Transfert de fichiers (MTP).
+2. Sur le Sony a6700 : Menu &gt; USB &gt; Transfert de fichiers (MTP).
 3. Branchez le cable USB entre le Sony et votre Pixel.
 4. Autorisez l&#8217;acces dans le dialogue qui s&#8217;affiche.
 5. L&#8217;app copie automatiquement les nouvelles photos dans DCIM/Camera.
