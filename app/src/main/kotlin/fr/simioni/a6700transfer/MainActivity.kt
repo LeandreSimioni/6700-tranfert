@@ -4,10 +4,12 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.app.DownloadManager
 import android.app.TimePickerDialog
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
@@ -46,6 +48,14 @@ class MainActivity : AppCompatActivity() {
     private var activeDownloadId = -1L
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
+
+    private val transferReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val text = intent?.getStringExtra(TransferService.EXTRA_STATUS_TEXT) ?: return
+            findViewById<TextView>(R.id.tv_transfer_status).text = text
+            refreshLogs()
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -125,6 +135,13 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         updateUi()
         refreshLogs()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(transferReceiver, IntentFilter(TransferService.ACTION_STATUS),
+                RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(transferReceiver, IntentFilter(TransferService.ACTION_STATUS))
+        }
         // Resume download progress polling if a download was active
         val downloadId = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(UpdateChecker.PREF_DOWNLOAD_ID, -1L)
         if (downloadId != -1L && activeDownloadId == -1L) {
@@ -136,20 +153,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() { super.onPause(); stopProgressPolling() }
+    override fun onPause() {
+        super.onPause()
+        stopProgressPolling()
+        try { unregisterReceiver(transferReceiver) } catch (_: Exception) {}
+    }
 
     private fun requestAllPermissions() {
-        // Step 1: MANAGE_EXTERNAL_STORAGE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
-        // Step 2: Install unknown apps
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             return
         }
-        // Step 3: Battery optimization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(PowerManager::class.java)
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
@@ -157,7 +175,6 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        // Step 4: Runtime permissions
         val toRequest = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -298,7 +315,8 @@ class MainActivity : AppCompatActivity() {
                         activeDownloadId = UpdateChecker.downloadApk(this)
                         startProgressPolling()
                     }
-                    is UpdateResult.Error -> tvUpdate.text = "Erreur: ${result.message}"}
+                    is UpdateResult.Error -> tvUpdate.text = "Erreur: ${result.message}"
+                }
             }
         }.start()
     }

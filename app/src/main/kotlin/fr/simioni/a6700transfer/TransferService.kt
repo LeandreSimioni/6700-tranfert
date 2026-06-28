@@ -28,9 +28,10 @@ class TransferService : Service() {
         const val EXTRA_MAX_DIMENSION = "max_dimension"
         const val EXTRA_VOL_ID = "vol_id"
         const val MODE_MSC = "msc"
+        const val ACTION_STATUS = "fr.simioni.a6700transfer.TRANSFER_STATUS"
+        const val EXTRA_STATUS_TEXT = "status_text"
     }
 
-    // Pair of (DocumentFile, cached filename)
     private data class DocEntry(val doc: DocumentFile, val name: String)
 
     private var maxDimension = 4096
@@ -65,7 +66,10 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
-    /** Read EXIF date from stream (fast - reads only EXIF header, not full file) */
+    private fun broadcastStatus(text: String) {
+        sendBroadcast(Intent(ACTION_STATUS).putExtra(EXTRA_STATUS_TEXT, text))
+    }
+
     private fun readExifDate(uri: Uri): Long {
         return try {
             contentResolver.openInputStream(uri)?.use { stream ->
@@ -93,6 +97,7 @@ class TransferService : Service() {
 
     private fun doSafTransfer(rootUri: Uri, sinceTimestamp: Long) {
         try {
+            broadcastStatus("Scan en cours...")
             updateProgress(getString(R.string.notif_scanning), 0, 0)
             val rootDoc = DocumentFile.fromTreeUri(this, rootUri)
             if (rootDoc == null || !rootDoc.canRead()) {
@@ -105,6 +110,7 @@ class TransferService : Service() {
                     })
                 }
                 log("[MSC] SAF: volume inaccessible - permission expiree, re-ouvrir l'app")
+                broadcastStatus("Erreur: volume inaccessible — ouvrez l'app")
                 updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
@@ -112,13 +118,22 @@ class TransferService : Service() {
             val dcim = rootDoc.findFile("DCIM")
             if (dcim == null || !dcim.isDirectory) {
                 log("[MSC] SAF: pas de dossier DCIM")
+                broadcastStatus("Pas de dossier DCIM sur le Sony")
                 updateProgress(getString(R.string.notif_no_photos), 0, 0)
                 return
             }
             val entries = mutableListOf<DocEntry>()
             collectDocumentFiles(dcim, sinceTimestamp, entries)
             log("[MSC] ${entries.size} fichier(s) apres filtre date")
-            if (entries.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
+            broadcastStatus("${entries.size} photo(s) a transferer...")
+            if (entries.isEmpty()) {
+                // Mise a jour timestamp meme si rien a copier (evite de rescanner au prochain branchement)
+                getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
+                broadcastStatus("Aucune nouvelle photo")
+                updateProgress(getString(R.string.notif_no_photos), 0, 0)
+                return
+            }
             totalFiles = entries.size; doneFiles = 0; skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for ((doc, name) in entries) {
@@ -129,6 +144,7 @@ class TransferService : Service() {
                     totalFiles = maxOf(0, totalFiles - 1); continue
                 }
                 try {
+                    broadcastStatus("Copie $name ($doneFiles/$totalFiles)")
                     saveSafFile(doc, name); doneFiles++
                     log("[MSC] OK: $name")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
@@ -136,11 +152,11 @@ class TransferService : Service() {
                     log("[MSC] ERREUR $name: ${e.message}")
                 }
             }
-            if (doneFiles > 0) {
-                getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
-            }
-            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles skip(s)")
+            getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
+            val summary = "Termine: $doneFiles copie(s), $skippedFiles deja present(s)"
+            log("[MSC] $summary")
+            broadcastStatus(summary)
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
@@ -148,16 +164,23 @@ class TransferService : Service() {
     private fun collectDocumentFiles(dir: DocumentFile, sinceTimestamp: Long, result: MutableList<DocEntry>) {
         for (child in dir.listFiles()) {
             if (child.isDirectory) { collectDocumentFiles(child, sinceTimestamp, result); continue }
-            val name = child.name ?: continue          // cache name NOW while SAF has it
+            val name = child.name ?: continue
             if (!isMediaFile(name)) continue
-            val ts = when {
-                name.lowercase().endsWith(".jpg") || name.lowercase().endsWith(".jpeg") ||
-                name.lowercase().endsWith(".arw") || name.lowercase().endsWith(".raw") ->
-                    readExifDate(child.uri)            // fast: reads only EXIF header
-                else -> child.lastModified()           // video: use lastModified
+            val ext = name.lowercase().substringAfterLast('.', "")
+            val ts = when (ext) {
+                "jpg", "jpeg", "arw", "raw" -> {
+                    val exifTs = readExifDate(child.uri)
+                    // Fallback to lastModified if EXIF unreadable
+                    if (exifTs > 0L) exifTs else child.lastModified()
+                }
+                else -> child.lastModified()
             }
             when {
-                ts == 0L -> log("[MSC] Ignore (date illisible): $name") // skip, don't risk duplicates
+                ts == 0L -> {
+                    // Can't determine date at all — include the file to avoid missing new photos
+                    log("[MSC] Inclus (date illisible): $name")
+                    result.add(DocEntry(child, name))
+                }
                 ts > sinceTimestamp -> result.add(DocEntry(child, name))
                 // else: photo prise avant la coupure, on ignore
             }
@@ -195,14 +218,21 @@ class TransferService : Service() {
 
     private fun doMscTransfer(mountPath: String, sinceTimestamp: Long) {
         try {
+            broadcastStatus("Scan dans $mountPath...")
             updateProgress(getString(R.string.notif_scanning), 0, 0)
             log("[MSC] Scan dans $mountPath")
             val dcim = File(mountPath, "DCIM")
-            if (!dcim.exists()) { log("[MSC] Pas de DCIM"); updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
+            if (!dcim.exists()) { log("[MSC] Pas de DCIM"); broadcastStatus("Pas de DCIM"); updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             val files = mutableListOf<File>()
             collectMediaFiles(dcim, sinceTimestamp, files)
             log("[MSC] ${files.size} fichier(s) a copier")
-            if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
+            broadcastStatus("${files.size} photo(s) a transferer...")
+            if (files.isEmpty()) {
+                getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
+                broadcastStatus("Aucune nouvelle photo")
+                updateProgress(getString(R.string.notif_no_photos), 0, 0); return
+            }
             totalFiles = files.size; doneFiles = 0; skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for (f in files) {
@@ -213,16 +243,17 @@ class TransferService : Service() {
                     totalFiles = maxOf(0, totalFiles - 1); continue
                 }
                 try {
+                    broadcastStatus("Copie ${f.name} ($doneFiles/$totalFiles)")
                     saveMscFile(f); doneFiles++
                     log("[MSC] OK: ${f.name}")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                 } catch (e: Exception) { log("[MSC] ERREUR ${f.name}: ${e.message}") }
             }
-            if (doneFiles > 0) {
-                getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
-            }
-            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles skip(s)")
+            getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
+            val summary = "Termine: $doneFiles copie(s), $skippedFiles deja present(s)"
+            log("[MSC] $summary")
+            broadcastStatus(summary)
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
