@@ -1,7 +1,5 @@
 package fr.simioni.a6700transfer
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -9,19 +7,22 @@ import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
-import androidx.core.app.NotificationCompat
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 
 class UsbReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_USB_PERMISSION = "fr.simioni.a6700transfer.USB_PERMISSION"
+        private const val SONY_VENDOR_ID = 0x054C
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             UsbManager.ACTION_USB_DEVICE_ATTACHED -> handleAttached(context, intent)
-            ACTION_USB_PERMISSION -> handlePermissionResult(context, intent)
+            ACTION_USB_PERMISSION               -> handlePermissionResult(context, intent)
+            Intent.ACTION_MEDIA_MOUNTED         -> handleMscMount(context)
         }
     }
 
@@ -29,55 +30,54 @@ class UsbReceiver : BroadcastReceiver() {
         val device = getDevice(intent) ?: return
         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         if (usbManager.hasPermission(device)) {
-            startTransfer(context, device)
+            startMtpTransfer(context, device)
         } else {
             val permIntent = Intent(ACTION_USB_PERMISSION).apply { setPackage(context.packageName) }
-            val pi = PendingIntent.getBroadcast(context, 0, permIntent, PendingIntent.FLAG_IMMUTABLE)
+            val pi = PendingIntent.getBroadcast(
+                context, 0, permIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
             usbManager.requestPermission(device, pi)
         }
     }
 
     private fun handlePermissionResult(context: Context, intent: Intent) {
         if (!intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) return
-        startTransfer(context, getDevice(intent) ?: return)
+        val device = getDevice(intent) ?: return
+        startMtpTransfer(context, device)
     }
 
-    private fun startTransfer(context: Context, device: UsbDevice) {
+    private fun handleMscMount(context: Context) {
+        // Verifie qu'un Sony est bien branché (présent dans la liste USB même en MSC)
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        val hasSony = usbManager.deviceList.values.any { it.vendorId == SONY_VENDOR_ID }
+        if (!hasSony) return
+
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-        val timestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
-        if (timestamp == -1L) {
-            notifyConfigurationRequired(context)
-            return
-        }
-        ContextCompat.startForegroundService(
-            context,
-            Intent(context, TransferService::class.java).apply {
-                putExtra(TransferService.EXTRA_USB_DEVICE, device)
-                putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
+        val sinceTimestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
+        if (sinceTimestamp == -1L) return
+
+        // Délai pour laisser le scanner media indexer le volume
+        Handler(Looper.getMainLooper()).postDelayed({
+            val serviceIntent = Intent(context, TransferService::class.java).apply {
+                putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, sinceTimestamp)
+                putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
             }
-        )
+            ContextCompat.startForegroundService(context, serviceIntent)
+        }, 3000L)
     }
 
-    private fun notifyConfigurationRequired(context: Context) {
-        val channelId = "config_required"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .createNotificationChannel(NotificationChannel(
-                    channelId, context.getString(R.string.config_channel_name),
-                    NotificationManager.IMPORTANCE_HIGH
-                ))
+    private fun startMtpTransfer(context: Context, device: UsbDevice) {
+        val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val sinceTimestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
+        if (sinceTimestamp == -1L) return
+
+        val serviceIntent = Intent(context, TransferService::class.java).apply {
+            putExtra(TransferService.EXTRA_USB_DEVICE, device)
+            putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, sinceTimestamp)
+            putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MTP)
         }
-        val pi = PendingIntent.getActivity(
-            context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
-        )
-        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(
-            1,
-            NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(context.getString(R.string.app_name))
-                .setContentText(context.getString(R.string.notif_open_app))
-                .setContentIntent(pi).setAutoCancel(true).build()
-        )
+        ContextCompat.startForegroundService(context, serviceIntent)
     }
 
     @Suppress("DEPRECATION")

@@ -15,26 +15,24 @@
     <string name="transfer_channel_name">Transfert en cours</string>
     <string name="config_channel_name">Configuration requise</string>
     <string name="notif_open_app">Ouvrez l&#8217;app pour definir la date de depart</string>
-    <string name="notif_starting">Connexion MTP&#8230;</string>
-    <string name="notif_scanning">Scan du stockage camera&#8230;</string>
-    <string name="notif_no_storage">Aucun stockage MTP - verifiez le mode USB du Sony</string>
-    <string name="notif_no_photos">Aucune nouvelle photo a transferer</string>
-    <string name="notif_progress">%1$d / %2$d photos transferees</string>
-    <string name="notif_done">Termine - %1$d photo(s) copiee(s)</string>
+    <string name="notif_starting">Connexion&#8230;</string>
+    <string name="notif_scanning">Scan des photos&#8230;</string>
+    <string name="notif_no_storage">Aucun stockage detecte - verifiez le mode USB du Sony</string>
+    <string name="notif_no_photos">Aucune nouvelle photo</string>
+    <string name="notif_progress">%1$d / %2$d photos copiees</string>
+    <string name="notif_done">Termine : %1$d photo(s) copiee(s)</string>
     <string name="notif_usb_error">Impossible d&#8217;ouvrir le peripherique USB</string>
     <string name="notif_mtp_error">Erreur MTP - mettez le Sony en mode Transfert de fichiers</string>
+
+    <string name="log_empty">Aucun transfert effectue</string>
 
     <string name="update_channel">Mises a jour</string>
     <string name="update_title">Mise a jour disponible</string>
     <string name="update_text">Appuyez pour installer la nouvelle version de 6700 Transfer</string>
 
-    <string name="info_how_it_works">Comment ca marche :
+    <string name="info_how_it_works">MTP (recommande) : Menu Sony &#8250; USB &#8250; Transfert de fichiers. Le dialog Android n&#8217;apparait qu&#8217;une seule fois.
 
-1. Definissez la date du dernier transfert.
-2. Sur le Sony a6700 : Menu &gt; USB &gt; Transfert de fichiers (MTP).
-3. Branchez le cable USB entre le Sony et votre Pixel.
-4. Autorisez l&#8217;acces dans le dialogue qui s&#8217;affiche.
-5. L&#8217;app copie automatiquement les nouvelles photos dans DCIM/Camera.
+MSC : Menu Sony &#8250; USB &#8250; Stockage de masse. Aucun dialog, entierement automatique.
 
-La camera n&#8217;est jamais modifiee (MTP lecture seule).</string>
+Les photos sont copiees dans DCIM/Camera avec le prefixe A6700_</string>
 </resources>

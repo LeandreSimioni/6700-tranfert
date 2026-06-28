@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
         val tvPermission = findViewById<TextView>(R.id.tv_permission_status)
         val btnSetDate = findViewById<Button>(R.id.btn_set_date)
         val btnPermission = findViewById<Button>(R.id.btn_permission)
+        val tvLog = findViewById<TextView>(R.id.tv_log)
 
         tvStatus.text = if (timestamp == -1L) {
             getString(R.string.status_not_configured)
@@ -98,6 +99,9 @@ class MainActivity : AppCompatActivity() {
             btnPermission.text = getString(R.string.btn_grant_permissions)
             btnPermission.setOnClickListener { checkPermissions() }
         }
+
+        val log = TransferLog.get(this)
+        tvLog.text = if (log.isBlank()) getString(R.string.log_empty) else log
     }
 
     private fun showDateTimePicker() {
@@ -129,8 +133,14 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) return false
         }
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.Q..Build.VERSION_CODES.S_V2) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) return false
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) return false
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
                 != PackageManager.PERMISSION_GRANTED) return false
         }
         return true
@@ -143,10 +153,18 @@ class MainActivity : AppCompatActivity() {
                 != PackageManager.PERMISSION_GRANTED)
                 toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.Q..Build.VERSION_CODES.S_V2) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED)
+                toRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED)
                 toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+                != PackageManager.PERMISSION_GRANTED)
+                toRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
         }
         if (toRequest.isNotEmpty()) permissionLauncher.launch(toRequest.toTypedArray())
     }
