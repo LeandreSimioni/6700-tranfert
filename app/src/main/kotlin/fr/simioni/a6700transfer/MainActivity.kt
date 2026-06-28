@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -39,6 +41,7 @@ class MainActivity : AppCompatActivity() {
             val done = intent.getBooleanExtra(TransferService.EXTRA_BROADCAST_DONE, false)
             val cardTransfer = findViewById<View>(R.id.card_transfer)
             val tvProgress = findViewById<TextView>(R.id.tv_transfer_progress)
+            val tvLog = findViewById<TextView>(R.id.tv_log)
             if (done) {
                 cardTransfer.visibility = View.GONE
                 updateUi()
@@ -46,6 +49,9 @@ class MainActivity : AppCompatActivity() {
                 cardTransfer.visibility = View.VISIBLE
                 tvProgress.text = msg
             }
+            // Mise a jour log en temps reel
+            val log = TransferLog.get(this@MainActivity)
+            tvLog.text = if (log.isBlank()) getString(R.string.log_empty) else log
         }
     }
 
@@ -53,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         supportActionBar?.subtitle = "v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})"
+        TransferLog.add(this, "[App] Demarrage v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})  API=${Build.VERSION.SDK_INT}")
         UpdateChecker.check(this)
     }
 
@@ -84,6 +91,8 @@ class MainActivity : AppCompatActivity() {
         val tvLog = findViewById<TextView>(R.id.tv_log)
         val btnUpdate = findViewById<Button>(R.id.btn_update)
         val tvUpdateStatus = findViewById<TextView>(R.id.tv_update_status)
+        val btnCopyLog = findViewById<Button>(R.id.btn_copy_log)
+        val btnClearLog = findViewById<Button>(R.id.btn_clear_log)
 
         tvStatus.text = if (timestamp == -1L) {
             getString(R.string.status_not_configured)
@@ -107,6 +116,19 @@ class MainActivity : AppCompatActivity() {
         val log = TransferLog.get(this)
         tvLog.text = if (log.isBlank()) getString(R.string.log_empty) else log
 
+        btnCopyLog.setOnClickListener {
+            val content = TransferLog.get(this)
+            val clip = ClipData.newPlainText("logs", content.ifBlank { "(vide)" })
+            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+            Toast.makeText(this, getString(R.string.log_copied), Toast.LENGTH_SHORT).show()
+        }
+
+        btnClearLog.setOnClickListener {
+            TransferLog.clear(this)
+            tvLog.text = getString(R.string.log_empty)
+            Toast.makeText(this, getString(R.string.log_cleared), Toast.LENGTH_SHORT).show()
+        }
+
         btnUpdate.setOnClickListener {
             btnUpdate.isEnabled = false
             UpdateChecker.checkManual(
@@ -117,7 +139,6 @@ class MainActivity : AppCompatActivity() {
                     startActivity(intent)
                 }
             )
-            // Reactivation du bouton si aucune installation lancee (deja a jour / erreur)
             tvUpdateStatus.postDelayed({ btnUpdate.isEnabled = true }, 15_000)
         }
     }
@@ -136,6 +157,7 @@ class MainActivity : AppCompatActivity() {
                         }.timeInMillis
                         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                             .edit().putLong(KEY_LAST_TRANSFER, ts).apply()
+                        TransferLog.add(this, "[Config] Date de depart definie: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(ts))}")
                         updateUi()
                         Toast.makeText(this, R.string.date_saved, Toast.LENGTH_SHORT).show()
                     },

@@ -24,7 +24,11 @@
     <string name="notif_usb_error">Impossible d&#8217;ouvrir le peripherique USB</string>
     <string name="notif_mtp_error">Erreur MTP - mettez le Sony en mode Transfert de fichiers</string>
 
-    <string name="log_empty">Aucun transfert effectue</string>
+    <string name="log_empty">Aucun log pour l&#8217;instant</string>
+    <string name="btn_copy_log">Copier les logs</string>
+    <string name="btn_clear_log">Effacer</string>
+    <string name="log_copied">Logs copies dans le presse-papiers</string>
+    <string name="log_cleared">Logs effaces</string>
 
     <string name="btn_check_update">Verifier les mises a jour</string>
     <string name="update_checking">Verification en cours&#8230;</string>

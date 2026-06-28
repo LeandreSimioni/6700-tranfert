@@ -47,9 +47,15 @@ class TransferService : Service() {
     @Suppress("DEPRECATION")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val sinceTimestamp = intent?.getLongExtra(EXTRA_SINCE_TIMESTAMP, -1L) ?: -1L
-        if (sinceTimestamp == -1L) { stopSelf(); return START_NOT_STICKY }
+        if (sinceTimestamp == -1L) {
+            log("[Service] Pas de timestamp - arret")
+            stopSelf(); return START_NOT_STICKY
+        }
 
-        when (intent?.getStringExtra(EXTRA_MODE)) {
+        val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_MTP
+        log("[Service] Demarrage mode=$mode depuis=${sinceTimestamp}")
+
+        when (mode) {
             MODE_MSC -> Thread { doMscTransfer(sinceTimestamp) }.start()
             else -> {
                 val device: UsbDevice? =
@@ -57,19 +63,25 @@ class TransferService : Service() {
                         intent?.getParcelableExtra(EXTRA_USB_DEVICE, UsbDevice::class.java)
                     else
                         intent?.getParcelableExtra(EXTRA_USB_DEVICE)
-                if (device == null) { stopSelf(); return START_NOT_STICKY }
+
+                if (device == null) {
+                    log("[MTP] Device null - arret")
+                    stopSelf(); return START_NOT_STICKY
+                }
+                log("[MTP] Ouverture connexion: ${device.productName ?: device.deviceName}")
 
                 val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
                 val connection = usbManager.openDevice(device) ?: run {
-                    notifyAndLog(getString(R.string.notif_usb_error), done = true)
+                    logAndNotify("[MTP] ERREUR: impossible d'ouvrir le device USB", done = true)
                     stopSelf(); return START_NOT_STICKY
                 }
                 val mtpDevice = MtpDevice(device)
                 if (!mtpDevice.open(connection)) {
                     connection.close()
-                    notifyAndLog(getString(R.string.notif_mtp_error), done = true)
+                    logAndNotify("[MTP] ERREUR: protocole MTP refuse - verifiez USB > Transfert de fichiers sur le Sony", done = true)
                     stopSelf(); return START_NOT_STICKY
                 }
+                log("[MTP] Connexion ouverte OK")
                 Thread { doMtpTransfer(mtpDevice, sinceTimestamp) }.start()
             }
         }
@@ -81,42 +93,59 @@ class TransferService : Service() {
     private fun doMtpTransfer(mtpDevice: MtpDevice, sinceTimestamp: Long) {
         try {
             val storageIds: IntArray = mtpDevice.storageIds ?: run {
-                notifyAndLog(getString(R.string.notif_no_storage), done = true); return
+                logAndNotify("[MTP] Pas de storageIds retournes par l'appareil", done = true)
+                return
             }
+            log("[MTP] Stockages trouves: ${storageIds.size} (IDs: ${storageIds.toList()})")
             if (storageIds.isEmpty()) {
-                notifyAndLog(getString(R.string.notif_no_storage), done = true); return
+                logAndNotify("[MTP] Aucun stockage disponible sur l'appareil", done = true)
+                return
             }
 
             broadcast(getString(R.string.notif_scanning))
             val queue = mutableListOf<MtpObjectInfo>()
-            for (storageId in storageIds) collectJpegs(mtpDevice, storageId, 0, sinceTimestamp, queue)
+            for (storageId in storageIds) {
+                log("[MTP] Scan stockage $storageId...")
+                collectJpegs(mtpDevice, storageId, 0, sinceTimestamp, queue)
+            }
             queue.sortBy { it.dateCreated }
+            log("[MTP] Scan termine: ${queue.size} photo(s) a copier")
 
             if (queue.isEmpty()) {
-                notifyAndLog(getString(R.string.notif_no_photos), done = true); return
+                logAndNotify("[MTP] Aucune nouvelle photo depuis la date configuree", done = true)
+                return
             }
 
             var latest = sinceTimestamp
             var count = 0
+            var errors = 0
             for (info in queue) {
+                val filename = info.name ?: "IMG_${info.objectHandle}.jpg"
                 val temp = File(cacheDir, "mtp_${info.objectHandle}.jpg")
                 try {
+                    log("[MTP] Copie: $filename")
                     if (mtpDevice.importFile(info.objectHandle, temp.absolutePath)) {
-                        processAndSave(temp, info.name ?: "IMG_${info.objectHandle}.jpg")
+                        processAndSave(temp, filename)
                         val date = ImageProcessor.getExifDate(temp).takeIf { it > 0 } ?: (info.dateCreated * 1000L)
                         if (date > latest) latest = date
                         count++
                         val msg = getString(R.string.notif_progress, count, queue.size)
                         updateNotification(msg)
                         broadcast(msg)
+                        log("[MTP] OK: $filename")
+                    } else {
+                        errors++
+                        log("[MTP] ERREUR importFile: $filename")
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    errors++
+                    log("[MTP] EXCEPTION $filename: ${e.javaClass.simpleName}: ${e.message}")
                 } finally { temp.delete() }
             }
 
             getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latest).apply()
-            notifyAndLog(getString(R.string.notif_done, count), done = true)
+            logAndNotify("[MTP] Termine: $count photo(s) copiee(s), $errors erreur(s)", done = true)
         } finally {
             mtpDevice.close()
             stopSelf()
@@ -144,16 +173,21 @@ class TransferService : Service() {
     private fun doMscTransfer(sinceTimestamp: Long) {
         try {
             broadcast(getString(R.string.notif_scanning))
-            val count = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+            val count = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                log("[MSC] API ${Build.VERSION.SDK_INT} >= 29: mode MediaStore")
                 copyViaMscMediaStore(sinceTimestamp)
-            else
+            } else {
+                log("[MSC] API ${Build.VERSION.SDK_INT} < 29: mode fichiers directs")
                 copyViaMscDirect(sinceTimestamp)
+            }
 
             if (count == 0) {
-                notifyAndLog(getString(R.string.notif_no_photos), done = true)
+                logAndNotify("[MSC] Aucune nouvelle photo trouvee", done = true)
             } else {
-                notifyAndLog(getString(R.string.notif_done, count), done = true)
+                logAndNotify("[MSC] Termine: $count photo(s) copiee(s)", done = true)
             }
+        } catch (e: Exception) {
+            logAndNotify("[MSC] EXCEPTION: ${e.javaClass.simpleName}: ${e.message}", done = true)
         } finally {
             stopSelf()
         }
@@ -161,11 +195,17 @@ class TransferService : Service() {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun copyViaMscMediaStore(sinceTimestamp: Long): Int {
+        val volumeNames = MediaStore.getExternalVolumeNames(this)
+        log("[MSC] Volumes externes: $volumeNames")
+
         var count = 0
         var latest = sinceTimestamp
-        val volumeNames = MediaStore.getExternalVolumeNames(this)
         for (volumeName in volumeNames) {
-            if (volumeName == MediaStore.VOLUME_EXTERNAL_PRIMARY) continue
+            if (volumeName == MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+                log("[MSC] Volume '$volumeName' = stockage interne, ignore")
+                continue
+            }
+            log("[MSC] Interrogation volume '$volumeName'...")
             val contentUri = MediaStore.Images.Media.getContentUri(volumeName)
             val cursor = contentResolver.query(
                 contentUri,
@@ -173,7 +213,12 @@ class TransferService : Service() {
                 "${MediaStore.Images.Media.DATE_TAKEN} > ?",
                 arrayOf(sinceTimestamp.toString()),
                 "${MediaStore.Images.Media.DATE_TAKEN} ASC"
-            ) ?: continue
+            )
+            if (cursor == null) {
+                log("[MSC] cursor null pour volume '$volumeName'")
+                continue
+            }
+            log("[MSC] Volume '$volumeName': ${cursor.count} photo(s) trouvee(s)")
             cursor.use {
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -185,6 +230,7 @@ class TransferService : Service() {
                     val dateTaken = cursor.getLong(dateCol)
                     val fileUri = ContentUris.withAppendedId(contentUri, id)
                     try {
+                        log("[MSC] Copie: $name")
                         val temp = File(cacheDir, "msc_$name")
                         contentResolver.openInputStream(fileUri)?.use { input ->
                             temp.outputStream().use { input.copyTo(it) }
@@ -196,7 +242,10 @@ class TransferService : Service() {
                         val msg = getString(R.string.notif_progress, count, total)
                         updateNotification(msg)
                         broadcast(msg)
-                    } catch (_: Exception) {}
+                        log("[MSC] OK: $name")
+                    } catch (e: Exception) {
+                        log("[MSC] EXCEPTION $name: ${e.javaClass.simpleName}: ${e.message}")
+                    }
                 }
             }
         }
@@ -210,23 +259,35 @@ class TransferService : Service() {
     private fun copyViaMscDirect(sinceTimestamp: Long): Int {
         var count = 0
         var latest = sinceTimestamp
-        // Volumes externes : getExternalFilesDirs remonte jusqu'à la racine du volume
-        getExternalFilesDirs(null).filterNotNull().forEach { appDir ->
+        val dirs = getExternalFilesDirs(null).filterNotNull()
+        log("[MSC] Dossiers app externes: ${dirs.map { it.absolutePath }}")
+        dirs.forEach { appDir ->
             var root = appDir
             repeat(4) { root = root.parentFile ?: return@forEach }
-            if (root.absolutePath == Environment.getExternalStorageDirectory().absolutePath) return@forEach
+            if (root.absolutePath == Environment.getExternalStorageDirectory().absolutePath) {
+                log("[MSC] '${root.absolutePath}' = stockage interne, ignore")
+                return@forEach
+            }
             val dcim = File(root, "DCIM")
-            if (!dcim.exists()) return@forEach
+            if (!dcim.exists()) {
+                log("[MSC] Pas de dossier DCIM dans '${root.absolutePath}'")
+                return@forEach
+            }
+            log("[MSC] Scan DCIM dans '${root.absolutePath}'...")
             dcim.walkTopDown()
                 .filter { it.isFile && it.extension.lowercase() in listOf("jpg", "jpeg") }
                 .sortedBy { it.lastModified() }
                 .forEach { file ->
                     if (file.lastModified() > sinceTimestamp) {
                         try {
+                            log("[MSC] Copie: ${file.name}")
                             processAndSave(file, file.name)
                             if (file.lastModified() > latest) latest = file.lastModified()
                             count++
-                        } catch (_: Exception) {}
+                            log("[MSC] OK: ${file.name}")
+                        } catch (e: Exception) {
+                            log("[MSC] EXCEPTION ${file.name}: ${e.javaClass.simpleName}: ${e.message}")
+                        }
                     }
                 }
         }
@@ -266,7 +327,7 @@ class TransferService : Service() {
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: throw Exception("MediaStore insert failed")
+            ?: throw Exception("MediaStore insert failed for $displayName")
         try {
             contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
             values.clear()
@@ -278,9 +339,14 @@ class TransferService : Service() {
         }
     }
 
-    private fun notifyAndLog(msg: String, done: Boolean = false) {
-        updateNotification(msg)
+    private fun log(msg: String) {
         TransferLog.add(this, msg)
+        broadcast(msg)
+    }
+
+    private fun logAndNotify(msg: String, done: Boolean = false) {
+        TransferLog.add(this, msg)
+        updateNotification(msg)
         broadcast(msg, done)
     }
 

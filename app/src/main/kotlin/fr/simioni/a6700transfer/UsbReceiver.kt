@@ -22,16 +22,38 @@ class UsbReceiver : BroadcastReceiver() {
         when (intent.action) {
             UsbManager.ACTION_USB_DEVICE_ATTACHED -> handleAttached(context, intent)
             ACTION_USB_PERMISSION               -> handlePermissionResult(context, intent)
-            Intent.ACTION_MEDIA_MOUNTED         -> handleMscMount(context)
+            Intent.ACTION_MEDIA_MOUNTED         -> handleMscMount(context, intent)
         }
     }
 
     private fun handleAttached(context: Context, intent: Intent) {
-        val device = getDevice(intent) ?: return
+        val device = getDevice(intent) ?: run {
+            TransferLog.add(context, "[USB] Appareil attache mais impossible de lire le device")
+            return
+        }
+        val vid = device.vendorId
+        val pid = device.productId
+        val name = device.productName ?: device.deviceName
+        TransferLog.add(context, "[USB] Attache: $name  VID=0x${vid.toString(16).uppercase()}  PID=0x${pid.toString(16).uppercase()}")
+
+        if (vid != SONY_VENDOR_ID) {
+            TransferLog.add(context, "[USB] Non-Sony ignore (VID attendu: 0x054C)")
+            return
+        }
+
+        val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val sinceTimestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
+        if (sinceTimestamp == -1L) {
+            TransferLog.add(context, "[MTP] Date de depart non configuree - ouvrez l'app et definissez une date")
+            return
+        }
+
         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         if (usbManager.hasPermission(device)) {
+            TransferLog.add(context, "[MTP] Permission deja accordee - lancement transfert")
             startMtpTransfer(context, device)
         } else {
+            TransferLog.add(context, "[MTP] Demande de permission USB...")
             val permIntent = Intent(ACTION_USB_PERMISSION).apply { setPackage(context.packageName) }
             val pi = PendingIntent.getBroadcast(
                 context, 0, permIntent,
@@ -42,22 +64,46 @@ class UsbReceiver : BroadcastReceiver() {
     }
 
     private fun handlePermissionResult(context: Context, intent: Intent) {
-        if (!intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) return
-        val device = getDevice(intent) ?: return
+        val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+        val device = getDevice(intent)
+        if (!granted) {
+            TransferLog.add(context, "[MTP] Permission REFUSEE par l'utilisateur")
+            return
+        }
+        if (device == null) {
+            TransferLog.add(context, "[MTP] Permission accordee mais device null")
+            return
+        }
+        TransferLog.add(context, "[MTP] Permission accordee - lancement transfert")
         startMtpTransfer(context, device)
     }
 
-    private fun handleMscMount(context: Context) {
-        // Verifie qu'un Sony est bien branché (présent dans la liste USB même en MSC)
+    private fun handleMscMount(context: Context, intent: Intent) {
+        val mountPath = intent.data?.path ?: "?"
+        TransferLog.add(context, "[MSC] Volume monte: $mountPath")
+
         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
-        val hasSony = usbManager.deviceList.values.any { it.vendorId == SONY_VENDOR_ID }
-        if (!hasSony) return
+        val devices = usbManager.deviceList
+        if (devices.isEmpty()) {
+            TransferLog.add(context, "[MSC] Aucun peripherique USB detecte - ignore")
+            return
+        }
+        val sonyDevice = devices.values.firstOrNull { it.vendorId == SONY_VENDOR_ID }
+        if (sonyDevice == null) {
+            val list = devices.values.joinToString { "VID=0x${it.vendorId.toString(16).uppercase()}" }
+            TransferLog.add(context, "[MSC] Pas de Sony en USB ($list) - ignore")
+            return
+        }
+        TransferLog.add(context, "[MSC] Sony detecte en USB: ${sonyDevice.productName ?: sonyDevice.deviceName}")
 
         val prefs = context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
         val sinceTimestamp = prefs.getLong(MainActivity.KEY_LAST_TRANSFER, -1L)
-        if (sinceTimestamp == -1L) return
+        if (sinceTimestamp == -1L) {
+            TransferLog.add(context, "[MSC] Date de depart non configuree - ignoree")
+            return
+        }
 
-        // Délai pour laisser le scanner media indexer le volume
+        TransferLog.add(context, "[MSC] Lancement transfert dans 3s (attente scan media)...")
         Handler(Looper.getMainLooper()).postDelayed({
             val serviceIntent = Intent(context, TransferService::class.java).apply {
                 putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, sinceTimestamp)
