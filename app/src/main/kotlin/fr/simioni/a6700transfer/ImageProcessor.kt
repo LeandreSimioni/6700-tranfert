@@ -29,7 +29,7 @@ object ImageProcessor {
         ExifInterface.TAG_LENS_MODEL,
         ExifInterface.TAG_EXPOSURE_TIME,
         ExifInterface.TAG_F_NUMBER,
-        ExifInterface.TAG_ISO_SPEED_RATINGS,
+        ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY,
         ExifInterface.TAG_FOCAL_LENGTH,
         ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM,
         ExifInterface.TAG_FLASH,
