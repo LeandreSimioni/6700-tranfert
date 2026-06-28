@@ -75,6 +75,9 @@ class MainActivity : AppCompatActivity() {
         val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_TRANSFER, -1L)
 
+        findViewById<TextView>(R.id.tv_version).text =
+            "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+
         val tvStatus = findViewById<TextView>(R.id.tv_status)
         val tvPermission = findViewById<TextView>(R.id.tv_permission_status)
         val btnSetDate = findViewById<Button>(R.id.btn_set_date)
