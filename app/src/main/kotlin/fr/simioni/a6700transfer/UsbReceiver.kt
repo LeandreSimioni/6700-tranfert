@@ -55,10 +55,12 @@ class UsbReceiver : BroadcastReceiver() {
         } else {
             TransferLog.add(context, "[MTP] Demande de permission USB...")
             val permIntent = Intent(ACTION_USB_PERMISSION).apply { setPackage(context.packageName) }
-            val pi = PendingIntent.getBroadcast(
-                context, 0, permIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            // FLAG_MUTABLE obligatoire : Android doit pouvoir ajouter EXTRA_PERMISSION_GRANTED dans l'intent retour
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            else
+                PendingIntent.FLAG_UPDATE_CURRENT
+            val pi = PendingIntent.getBroadcast(context, device.deviceId, permIntent, flags)
             usbManager.requestPermission(device, pi)
         }
     }
@@ -66,6 +68,7 @@ class UsbReceiver : BroadcastReceiver() {
     private fun handlePermissionResult(context: Context, intent: Intent) {
         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
         val device = getDevice(intent)
+        TransferLog.add(context, "[MTP] Reponse permission: granted=$granted device=${device?.productName ?: device?.deviceName ?: "null"}")
         if (!granted) {
             TransferLog.add(context, "[MTP] Permission REFUSEE par l'utilisateur")
             return
