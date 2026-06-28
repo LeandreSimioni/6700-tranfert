@@ -11,8 +11,12 @@ android {
         applicationId = "fr.simioni.a6700transfer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 5
+        versionName = "1.5"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
