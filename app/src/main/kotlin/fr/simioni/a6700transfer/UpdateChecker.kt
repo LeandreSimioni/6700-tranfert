@@ -17,7 +17,7 @@ object UpdateChecker {
     private const val APK_URL =
         "https://github.com/LeandreSimioni/6700-tranfert/releases/download/latest-build/6700-transfer-debug.apk"
 
-    /** Verification silencieuse au lancement — installe via notification si mise a jour dispo */
+    /** Verification silencieuse au lancement */
     fun check(context: Context) {
         Thread {
             try {
@@ -30,11 +30,6 @@ object UpdateChecker {
         }.start()
     }
 
-    /**
-     * Verification manuelle depuis le bouton UI.
-     * [onStatus] est appele sur le main thread avec un texte d'etat.
-     * [onInstall] est appele quand l'APK est pret — l'appelant lance l'install.
-     */
     fun checkManual(
         context: Context,
         onStatus: (String) -> Unit,
@@ -56,8 +51,9 @@ object UpdateChecker {
                     onStatus(context.getString(R.string.update_ready))
                     onInstall(intent)
                 }
-            } catch (_: Exception) {
-                ui.post { onStatus(context.getString(R.string.update_error)) }
+            } catch (e: Exception) {
+                val detail = "${e.javaClass.simpleName}: ${e.message}"
+                ui.post { onStatus("${context.getString(R.string.update_error)} ($detail)") }
             }
         }.start()
     }
