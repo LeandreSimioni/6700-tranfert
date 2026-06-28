@@ -42,11 +42,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish release with APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest-build
-          name: "6700 Transfer - Derniere build (debug)"
-          body: "APK debug genere automatiquement."
-          prerelease: true
-          files: app/build/outputs/apk/debug/6700-transfer-debug.apk
+      - name: Create release and upload APK
+        run: |
+          set -e
+          APK_PATH="app/build/outputs/apk/debug/6700-transfer-debug.apk"
+          REPO="${{ github.repository }}"
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+
+          echo "Creating release tag latest-build..."
+          RELEASE_JSON=$(curl -sf -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/releases" \
+            -d '{"tag_name":"latest-build","name":"6700 Transfer - Derniere build (debug)","body":"APK debug genere automatiquement.","prerelease":true}')
+
+          echo "Release: $(echo "$RELEASE_JSON" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r.get("html_url","ERROR:"+str(r)))')"
+
+          UPLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r["upload_url"].split("{")[0])')
+          echo "Upload URL: $UPLOAD_URL"
+
+          echo "Uploading APK ($(du -sh $APK_PATH | cut -f1))..."
+          ASSET_JSON=$(curl -sf -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            --data-binary @"$APK_PATH" \
+            "${UPLOAD_URL}?name=6700-transfer-debug.apk")
+
+          echo "Asset: $(echo "$ASSET_JSON" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r.get("browser_download_url","ERROR:"+str(r)))')"
+          echo "Done!"
