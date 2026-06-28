@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -13,7 +14,11 @@ import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 class TransferService : Service() {
 
@@ -49,13 +54,10 @@ class TransferService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val sinceTimestamp = intent?.getLongExtra(EXTRA_SINCE_TIMESTAMP, -1L) ?: -1L
         if (sinceTimestamp == -1L) { stopSelf(); return START_NOT_STICKY }
-
         maxDimension = intent?.getIntExtra(EXTRA_MAX_DIMENSION, 4096) ?: 4096
         volId = intent?.getStringExtra(EXTRA_VOL_ID)
-
         val safUriStr = intent?.getStringExtra(EXTRA_SAF_URI)
         val mountPath = intent?.getStringExtra(EXTRA_MOUNT_PATH)
-
         when {
             safUriStr != null -> Thread { doSafTransfer(Uri.parse(safUriStr), sinceTimestamp) }.start()
             mountPath != null -> Thread { doMscTransfer(mountPath, sinceTimestamp) }.start()
@@ -66,7 +68,50 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
-    /** Returns true if A6700_name already exists in MediaStore (dedup check) */
+    /**
+     * Read the actual capture date from EXIF (JPG/ARW) or MediaMetadataRetriever (MP4).
+     * Falls back to lastModified() if EXIF is unavailable.
+     * Returns 0L if date cannot be determined.
+     */
+    private fun getDocumentDate(doc: DocumentFile): Long {
+        val name = (doc.name ?: return 0L).lowercase()
+        val ext = name.substringAfterLast('.')
+        return when (ext) {
+            "jpg", "jpeg", "arw", "raw" -> readExifDate(doc.uri)
+            "mp4", "mov" -> readVideoDate(doc.uri)
+            else -> doc.lastModified().takeIf { it != 0L } ?: 0L
+        }
+    }
+
+    private fun readExifDate(uri: Uri): Long {
+        return try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val exif = ExifInterface(stream)
+                val dateStr = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+                    ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+                    ?: return@use 0L
+                // Sony format: "2024:06:28 18:30:00" (local time, no timezone)
+                val sdf = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
+                sdf.parse(dateStr)?.time ?: 0L
+            } ?: 0L
+        } catch (e: Exception) { 0L }
+    }
+
+    private fun readVideoDate(uri: Uri): Long {
+        return try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(this, uri)
+            val dateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+            retriever.release()
+            if (dateStr != null && dateStr != "19040101T000000.000Z") {
+                // Format: "20240628T183000.000Z" (UTC)
+                val sdf = SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.US)
+                sdf.timeZone = TimeZone.getTimeZone("UTC")
+                sdf.parse(dateStr.substringBefore('.'))?.time ?: 0L
+            } else 0L
+        } catch (e: Exception) { 0L }
+    }
+
     private fun alreadyExists(displayName: String, isImage: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
@@ -75,8 +120,7 @@ class TransferService : Service() {
             collection,
             arrayOf(MediaStore.MediaColumns._ID),
             "${MediaStore.MediaColumns.DISPLAY_NAME} = ?",
-            arrayOf(displayName),
-            null
+            arrayOf(displayName), null
         )
         val exists = (cursor?.count ?: 0) > 0
         cursor?.close()
@@ -86,13 +130,7 @@ class TransferService : Service() {
     private fun clearSafUri(id: String) {
         getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
             .edit().remove("${MainActivity.KEY_SAF_URI_PREFIX}$id").apply()
-        log("[MSC] SAF URI efface pour $id - re-autorisation necessaire")
-    }
-
-    private fun openAppForReGrant() {
-        startActivity(Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        })
+        log("[MSC] SAF URI efface pour $id")
     }
 
     private fun doSafTransfer(rootUri: Uri, sinceTimestamp: Long) {
@@ -101,12 +139,16 @@ class TransferService : Service() {
             val rootDoc = DocumentFile.fromTreeUri(this, rootUri)
             if (rootDoc == null || !rootDoc.canRead()) {
                 val id = volId
-                if (id != null) { clearSafUri(id); openAppForReGrant() }
-                else log("[MSC] SAF: volume inaccessible - ouvrir l'app et refaire Scan MSC")
+                if (id != null) {
+                    clearSafUri(id)
+                    startActivity(Intent(this, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    })
+                } else log("[MSC] SAF: volume inaccessible - ouvrir l'app et refaire Scan MSC")
                 updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
-            log("[MSC] SAF: volume ouvert OK - ${rootDoc.name}")
+            log("[MSC] SAF: volume ouvert - ${rootDoc.name}")
             val dcim = rootDoc.findFile("DCIM")
             if (dcim == null || !dcim.isDirectory) {
                 log("[MSC] SAF: pas de dossier DCIM")
@@ -115,21 +157,16 @@ class TransferService : Service() {
             }
             val files = mutableListOf<DocumentFile>()
             collectDocumentFiles(dcim, sinceTimestamp, files)
-            log("[MSC] SAF: ${files.size} fichier(s) a copier (apres filtre date)")
+            log("[MSC] ${files.size} fichier(s) apres filtre date")
             if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
-            files.sortBy { it.lastModified() }
-            totalFiles = files.size
-            doneFiles = 0
-            skippedFiles = 0
+            totalFiles = files.size; doneFiles = 0; skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for (f in files) {
                 val displayName = "A6700_${f.name}"
                 val mime = mimeFor(f.name ?: "")
-                val isImage = mime.startsWith("image/")
-                if (alreadyExists(displayName, isImage)) {
-                    skippedFiles++
-                    log("[MSC] SKIP (existe deja): ${f.name}")
-                    totalFiles--
+                if (alreadyExists(displayName, mime.startsWith("image/"))) {
+                    skippedFiles++; log("[MSC] SKIP (deja copie): ${f.name}")
+                    totalFiles = maxOf(0, totalFiles - 1)
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                     continue
                 }
@@ -146,7 +183,7 @@ class TransferService : Service() {
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
             }
-            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles deja existant(s)")
+            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles skip(s)")
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
@@ -156,44 +193,42 @@ class TransferService : Service() {
             if (child.isDirectory) { collectDocumentFiles(child, sinceTimestamp, result); continue }
             val name = child.name ?: continue
             if (!isMediaFile(name)) continue
-            val ts = child.lastModified()
-            if (ts == 0L) {
-                // lastModified() not supported on this volume - use filename-based date if possible,
-                // otherwise include the file (dedup will prevent re-copying)
-                result.add(child)
-            } else if (ts > sinceTimestamp) {
-                result.add(child)
+            val ts = getDocumentDate(child)
+            when {
+                ts == 0L -> {
+                    // Can't read date - include with warning (dedup prevents re-copy)
+                    log("[MSC] Date illisible: $name - inclus par precaution")
+                    result.add(child)
+                }
+                ts > sinceTimestamp -> result.add(child)
+                // ts <= sinceTimestamp: photo prise avant la coupure, on ignore
             }
-            // ts > 0 && ts <= sinceTimestamp -> photo taken before cutoff, skip
         }
     }
 
     private fun saveSafFile(doc: DocumentFile) {
-        val name = doc.name ?: throw Exception("nom de fichier null")
+        val name = doc.name ?: throw Exception("nom null")
         val displayName = "A6700_$name"
         val mime = mimeFor(name)
         val isImage = mime.startsWith("image/")
-        val inputStream = contentResolver.openInputStream(doc.uri)
-            ?: throw Exception("impossible d'ouvrir $name")
         val temp = File(cacheDir, "saf_$name")
         try {
-            inputStream.use { it.copyTo(temp.outputStream()) }
+            contentResolver.openInputStream(doc.uri)?.use { it.copyTo(temp.outputStream()) }
+                ?: throw Exception("impossible d'ouvrir $name")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val toInsert = if (mime == "image/jpeg" && maxDimension > 0) {
                     val processed = File(cacheDir, "proc_$name")
-                    ImageProcessor.process(temp, processed, maxDimension)
-                    processed
+                    ImageProcessor.process(temp, processed, maxDimension); processed
                 } else temp
                 try { insertToMediaStore(toInsert, displayName, mime, isImage) }
                 finally { if (toInsert != temp) toInsert.delete() }
             } else {
                 val destDir = (if (isImage)
                     File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera")
-                else
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                else Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
                 ).also { it.mkdirs() }
                 val dest = File(destDir, displayName)
-                if (dest.exists()) return // dedup for older Android
+                if (dest.exists()) return
                 if (mime == "image/jpeg" && maxDimension > 0) ImageProcessor.process(temp, dest, maxDimension)
                 else temp.copyTo(dest, overwrite = false)
                 MediaScannerConnection.scanFile(this, arrayOf(dest.absolutePath), null, null)
@@ -206,38 +241,34 @@ class TransferService : Service() {
             updateProgress(getString(R.string.notif_scanning), 0, 0)
             log("[MSC] Scan dans $mountPath")
             val dcim = File(mountPath, "DCIM")
-            if (!dcim.exists()) { log("[MSC] Pas de dossier DCIM dans $mountPath"); updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
+            if (!dcim.exists()) { log("[MSC] Pas de DCIM"); updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             val files = mutableListOf<File>()
             collectMediaFiles(dcim, sinceTimestamp, files)
             log("[MSC] ${files.size} fichier(s) a copier")
             if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
             files.sortBy { it.lastModified() }
-            totalFiles = files.size
-            doneFiles = 0
-            skippedFiles = 0
+            totalFiles = files.size; doneFiles = 0; skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for (f in files) {
                 val displayName = "A6700_${f.name}"
                 val mime = mimeFor(f.name)
-                val isImage = mime.startsWith("image/")
-                if (alreadyExists(displayName, isImage)) {
-                    skippedFiles++; log("[MSC] SKIP (existe deja): ${f.name}")
-                    totalFiles--
+                if (alreadyExists(displayName, mime.startsWith("image/"))) {
+                    skippedFiles++; log("[MSC] SKIP: ${f.name}")
+                    totalFiles = maxOf(0, totalFiles - 1)
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                     continue
                 }
                 try {
-                    saveMscFile(f)
-                    doneFiles++
+                    saveMscFile(f); doneFiles++
                     log("[MSC] OK: ${f.name}")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
-                } catch (e: Exception) { log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}") }
+                } catch (e: Exception) { log("[MSC] ERREUR ${f.name}: ${e.message}") }
             }
             if (doneFiles > 0) {
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                     .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
             }
-            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles deja existant(s)")
+            log("[MSC] Termine: $doneFiles copie(s), $skippedFiles skip(s)")
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
     }
@@ -247,8 +278,22 @@ class TransferService : Service() {
         for (f in children) {
             if (f.isDirectory) { collectMediaFiles(f, sinceTimestamp, result); continue }
             if (!isMediaFile(f.name)) continue
-            if (f.lastModified() > sinceTimestamp) result.add(f)
+            val ts = readExifDateFromFile(f)
+            when {
+                ts == 0L -> if (f.lastModified() > sinceTimestamp) result.add(f)
+                ts > sinceTimestamp -> result.add(f)
+            }
         }
+    }
+
+    private fun readExifDateFromFile(file: File): Long {
+        return try {
+            val exif = ExifInterface(file.absolutePath)
+            val dateStr = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+                ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+                ?: return 0L
+            SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(dateStr)?.time ?: 0L
+        } catch (e: Exception) { 0L }
     }
 
     private fun isMediaFile(name: String): Boolean {
