@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+val versionProps = Properties().apply {
+    load(rootProject.file("version.properties").inputStream())
+}
+val appVersionCode = versionProps["versionCode"].toString().toInt()
+val appVersionName = "1.${appVersionCode}"
 
 android {
     namespace = "fr.simioni.a6700transfer"
@@ -11,8 +19,8 @@ android {
         applicationId = "fr.simioni.a6700transfer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.17"
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     signingConfigs {
