@@ -86,12 +86,9 @@ class TransferService : Service() {
             totalFiles = files.size
             doneFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
-            var latestTs = sinceTimestamp
             for (f in files) {
                 try {
                     saveSafFile(f)
-                    val ts = f.lastModified()
-                    if (ts > latestTs) latestTs = ts
                     doneFiles++
                     log("[MSC] OK: ${f.name}")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
@@ -99,9 +96,10 @@ class TransferService : Service() {
                     log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}")
                 }
             }
-            if (latestTs > sinceTimestamp) {
+            if (doneFiles > 0) {
+                // Utilise l'heure reelle du transfert (pas l'heure des fichiers Sony)
                 getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTs).apply()
+                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
             }
             log("[MSC] Termine: $doneFiles fichier(s) copie(s)")
             NotifHelper.showDone(this, doneFiles)
@@ -168,18 +166,18 @@ class TransferService : Service() {
             totalFiles = files.size
             doneFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
-            var latestTs = sinceTimestamp
             for (f in files) {
                 try {
                     saveMscFile(f)
-                    if (f.lastModified() > latestTs) latestTs = f.lastModified()
                     doneFiles++
                     log("[MSC] OK: ${f.name}")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                 } catch (e: Exception) { log("[MSC] ERREUR ${f.name}: ${e.javaClass.simpleName}: ${e.message}") }
             }
-            getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-                .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTs).apply()
+            if (doneFiles > 0) {
+                getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit().putLong(MainActivity.KEY_LAST_TRANSFER, System.currentTimeMillis()).apply()
+            }
             log("[MSC] Termine: $doneFiles fichier(s)")
             NotifHelper.showDone(this, doneFiles)
         } finally { stopSelf() }
@@ -259,7 +257,7 @@ class TransferService : Service() {
             builder.setProgress(max, progress, false)
             builder.setSubText("$progress / $max")
         } else {
-            builder.setProgress(0, 0, true) // indeterminate
+            builder.setProgress(0, 0, true)
         }
         return builder.build()
     }
