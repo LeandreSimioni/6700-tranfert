@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.storage.StorageManager
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -74,8 +75,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_clear_log).setOnClickListener { TransferLog.clear(this); refreshLogs() }
         findViewById<Button>(R.id.btn_scan_msc).setOnClickListener { startManualMscScan() }
         findViewById<Button>(R.id.btn_check_update).setOnClickListener { checkUpdate() }
+        findViewById<Button>(R.id.btn_notif_access).setOnClickListener { openNotificationAccessSettings() }
 
-        // Resize option
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val rg = findViewById<RadioGroup>(R.id.rg_resize)
         val savedDim = prefs.getInt(KEY_MAX_DIMENSION, 4096)
@@ -101,11 +102,19 @@ class MainActivity : AppCompatActivity() {
         requestBatteryOptimizationExemption()
     }
 
+    private fun openNotificationAccessSettings() {
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
+
+    private fun isNotificationAccessGranted(): Boolean {
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
+        return flat.contains(packageName)
+    }
+
     private fun requestBatteryOptimizationExemption() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val pm = getSystemService(PowerManager::class.java)
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-            TransferLog.add(this, "[App] Demande exemption optimisation batterie")
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                 Uri.parse("package:$packageName")))
         }
@@ -123,6 +132,18 @@ class MainActivity : AppCompatActivity() {
         else getString(R.string.status_last_transfer,
             SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(timestamp)))
         findViewById<Button>(R.id.btn_set_date).setOnClickListener { showDateTimePicker() }
+
+        // Acces notifications
+        val tvNotif = findViewById<TextView>(R.id.tv_notif_access_status)
+        val btnNotif = findViewById<Button>(R.id.btn_notif_access)
+        if (isNotificationAccessGranted()) {
+            tvNotif.text = "Accès notifications ✓ (détection auto active)"
+            btnNotif.text = "Vérifier l'accès"
+        } else {
+            tvNotif.text = "⚠️ Accès notifications requis pour le déclenchement auto"
+            btnNotif.text = "Accorder l'accès notifications"
+        }
+
         val tvPerm = findViewById<TextView>(R.id.tv_permission_status)
         val btnPerm = findViewById<Button>(R.id.btn_permission)
         if (hasAllPermissions()) {
