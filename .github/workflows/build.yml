@@ -23,6 +23,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
       - name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -33,7 +38,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug
 
       - name: Verify APK exists
         run: ls -lh app/build/outputs/apk/debug/app-debug.apk
@@ -54,7 +59,6 @@ jobs:
           APK_PATH="app/build/outputs/apk/debug/6700-transfer-debug.apk"
           REPO="${{ github.repository }}"
 
-          echo "Creating release..."
           RELEASE_JSON=$(curl -sf -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
