@@ -66,8 +66,12 @@ class TransferService : Service() {
 
     private fun doTransfer(mtpDevice: MtpDevice, sinceTimestamp: Long) {
         try {
-            val storageIds = mtpDevice.storageIds
-            if (storageIds.isNullOrEmpty()) {
+            // storageIds est IntArray? — pas de isNullOrEmpty() sur les tableaux primitifs
+            val storageIds: IntArray = mtpDevice.storageIds ?: run {
+                updateNotification(getString(R.string.notif_no_storage))
+                return
+            }
+            if (storageIds.isEmpty()) {
                 updateNotification(getString(R.string.notif_no_storage))
                 return
             }
@@ -118,7 +122,7 @@ class TransferService : Service() {
         device: MtpDevice, storageId: Int, parentHandle: Int,
         sinceTimestamp: Long, result: MutableList<MtpObjectInfo>
     ) {
-        val handles = device.getObjectHandles(storageId, 0, parentHandle) ?: return
+        val handles: IntArray = device.getObjectHandles(storageId, 0, parentHandle) ?: return
         for (handle in handles) {
             val info = device.getObjectInfo(handle) ?: continue
             when (info.format) {
