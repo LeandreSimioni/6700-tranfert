@@ -86,6 +86,17 @@ Ne jamais ignorer silencieusement les exceptions — toujours logger :
 }
 ```
 
+### 7. IntArray? n'a pas isNullOrEmpty() → erreur de compilation
+`mtpDevice.storageIds` retourne `IntArray?`. `isNullOrEmpty()` n'existe que sur `Collection?` et `String?`.
+```kotlin
+// FAUX — ne compile pas
+if (storageIds.isNullOrEmpty()) ...
+
+// CORRECT
+if (storageIds == null || storageIds.isEmpty()) ...
+// Kotlin smart-cast : storageIds est IntArray (non-null) après ce bloc
+```
+
 ## CI/CD
 
 - Workflow : `.github/workflows/build.yml` — déclenché sur push vers `claude/clever-wozniak-5vxdsu` et `main`
