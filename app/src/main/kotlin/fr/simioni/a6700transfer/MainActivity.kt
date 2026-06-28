@@ -13,6 +13,7 @@ import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
 import android.os.storage.StorageManager
 import android.provider.Settings
@@ -50,7 +51,8 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK) {
             val uri = result.data?.data ?: return@registerForActivityResult
             contentResolver.takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
             val volId = uri.lastPathSegment?.trimEnd(':') ?: "unknown"
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -125,18 +127,44 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        requestAllPermissions()
         updateUi()
         refreshLogs()
-        requestBatteryOptimizationExemption()
     }
 
-    private fun requestBatteryOptimizationExemption() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        val pm = getSystemService(PowerManager::class.java)
-        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+    private fun requestAllPermissions() {
+        // MANAGE_EXTERNAL_STORAGE: requires special system settings page
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            !Environment.isExternalStorageManager()) {
+            startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:$packageName")))
         }
+
+        // Battery optimization exemption
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(PowerManager::class.java)
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:$packageName")))
+            }
+        }
+
+        // Runtime permissions
+        val toRequest = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            toRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
+            toRequest.add(Manifest.permission.READ_MEDIA_VIDEO)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            toRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+                toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+        val missing = toRequest.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
     private fun refreshLogs() {
@@ -152,39 +180,20 @@ class MainActivity : AppCompatActivity() {
             SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(timestamp)))
         findViewById<Button>(R.id.btn_set_date).setOnClickListener { showDateTimePicker() }
 
+        val allOk = hasAllPermissions()
         val tvPerm = findViewById<TextView>(R.id.tv_permission_status)
         val btnPerm = findViewById<Button>(R.id.btn_permission)
-        if (hasAllPermissions()) {
-            tvPerm.text = getString(R.string.permissions_ok)
-            btnPerm.text = getString(R.string.btn_check_permissions)
-        } else {
-            tvPerm.text = getString(R.string.permissions_missing)
-            btnPerm.text = getString(R.string.btn_grant_permissions)
-        }
-        btnPerm.setOnClickListener { checkPermissions() }
+        tvPerm.text = if (allOk) getString(R.string.permissions_ok) else getString(R.string.permissions_missing)
+        btnPerm.text = if (allOk) getString(R.string.btn_check_permissions) else getString(R.string.btn_grant_permissions)
+        btnPerm.setOnClickListener { requestAllPermissions() }
     }
 
     private fun hasAllPermissions(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) return false
-        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) return false
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         }
         return true
-    }
-
-    private fun checkPermissions() {
-        val toRequest = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-                toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
-                toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-        if (toRequest.isNotEmpty()) permissionLauncher.launch(toRequest.toTypedArray())
     }
 
     fun startManualMscScan() {
@@ -223,6 +232,7 @@ class MainActivity : AppCompatActivity() {
                 putExtra(TransferService.EXTRA_SINCE_TIMESTAMP, timestamp)
                 putExtra(TransferService.EXTRA_MODE, TransferService.MODE_MSC)
                 putExtra(TransferService.EXTRA_MAX_DIMENSION, maxDim)
+                putExtra(TransferService.EXTRA_VOL_ID, volId)
             })
         }
         refreshLogs()
