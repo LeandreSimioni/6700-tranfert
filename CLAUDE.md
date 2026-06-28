@@ -2,6 +2,16 @@
 
 Contexte projet et règles à NE PAS oublier entre sessions.
 
+## ⬇️ TÉLÉCHARGER L'APK
+
+```
+https://github.com/LeandreSimioni/6700-tranfert/releases/download/latest-build/6700-transfer-debug.apk
+```
+
+Ce lien est regénéré à chaque push sur `main` par le CI. Si le lien ne marche pas :
+1. Vérifier que le dernier workflow sur `main` est en `success` dans l'onglet Actions
+2. Aller sur https://github.com/LeandreSimioni/6700-tranfert/releases/tag/latest-build pour confirmer que le fichier `6700-transfer-debug.apk` est bien attaché
+
 ## Projet
 
 Application Android (Kotlin) qui transfère automatiquement les photos/vidéos d'un Sony a6700 vers un Pixel Android via câble USB.
@@ -94,6 +104,7 @@ if (storageIds == null || storageIds.isEmpty()) ...
 - Workflow : `.github/workflows/build.yml` — déclenché sur push vers `main`
 - Release tag : `latest-build` (supprimée et recrée à chaque build)
 - APK : `6700-transfer-debug.apk`
+- Lien direct : `https://github.com/LeandreSimioni/6700-tranfert/releases/download/latest-build/6700-transfer-debug.apk`
 - `version.properties` à la racine doit être mis à jour à chaque incrément de version
 
 ## Permissions Android
