@@ -13,21 +13,25 @@ import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class TransferService : Service() {
 
     companion object {
-        const val EXTRA_USB_DEVICE = "usb_device"
         const val EXTRA_SINCE_TIMESTAMP = "since_timestamp"
         const val EXTRA_MODE = "mode"
         const val EXTRA_MOUNT_PATH = "mount_path"
         const val EXTRA_SAF_URI = "saf_uri"
         const val EXTRA_MAX_DIMENSION = "max_dimension"
         const val EXTRA_VOL_ID = "vol_id"
-        const val MODE_MTP = "mtp"
         const val MODE_MSC = "msc"
     }
+
+    // Pair of (DocumentFile, cached filename)
+    private data class DocEntry(val doc: DocumentFile, val name: String)
 
     private var maxDimension = 4096
     private var totalFiles = 0
@@ -40,10 +44,8 @@ class TransferService : Service() {
     override fun onCreate() {
         super.onCreate()
         NotifHelper.init(this)
-        startForeground(
-            NotifHelper.NOTIF_TRANSFER,
-            buildProgressNotif(getString(R.string.notif_starting), 0, 0)
-        )
+        startForeground(NotifHelper.NOTIF_TRANSFER,
+            buildProgressNotif(getString(R.string.notif_starting), 0, 0))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,16 +65,27 @@ class TransferService : Service() {
 
     private fun log(msg: String) = TransferLog.add(this, msg)
 
+    /** Read EXIF date from stream (fast - reads only EXIF header, not full file) */
+    private fun readExifDate(uri: Uri): Long {
+        return try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val exif = ExifInterface(stream)
+                val dateStr = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+                    ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+                    ?: return@use 0L
+                SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(dateStr)?.time ?: 0L
+            } ?: 0L
+        } catch (_: Exception) { 0L }
+    }
+
     private fun alreadyExists(displayName: String, isImage: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                          else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        val cursor = contentResolver.query(
-            collection,
+        val cursor = contentResolver.query(collection,
             arrayOf(MediaStore.MediaColumns._ID),
             "${MediaStore.MediaColumns.DISPLAY_NAME} = ?",
-            arrayOf(displayName), null
-        )
+            arrayOf(displayName), null)
         val exists = (cursor?.count ?: 0) > 0
         cursor?.close()
         return exists
@@ -91,7 +104,7 @@ class TransferService : Service() {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     })
                 }
-                log("[MSC] SAF: volume inaccessible - re-ouvrir l'app pour re-autoriser")
+                log("[MSC] SAF: volume inaccessible - permission expiree, re-ouvrir l'app")
                 updateProgress(getString(R.string.notif_no_storage), 0, 0)
                 return
             }
@@ -102,27 +115,25 @@ class TransferService : Service() {
                 updateProgress(getString(R.string.notif_no_photos), 0, 0)
                 return
             }
-            val files = mutableListOf<DocumentFile>()
-            collectDocumentFiles(dcim, sinceTimestamp, files)
-            log("[MSC] ${files.size} fichier(s) apres filtre date")
-            if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
-            totalFiles = files.size; doneFiles = 0; skippedFiles = 0
+            val entries = mutableListOf<DocEntry>()
+            collectDocumentFiles(dcim, sinceTimestamp, entries)
+            log("[MSC] ${entries.size} fichier(s) apres filtre date")
+            if (entries.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
+            totalFiles = entries.size; doneFiles = 0; skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
-            for (f in files) {
-                val displayName = "A6700_${f.name}"
-                val mime = mimeFor(f.name ?: "")
+            for ((doc, name) in entries) {
+                val displayName = "A6700_$name"
+                val mime = mimeFor(name)
                 if (alreadyExists(displayName, mime.startsWith("image/"))) {
-                    skippedFiles++
-                    log("[MSC] SKIP (deja copie): ${f.name}")
-                    totalFiles = maxOf(0, totalFiles - 1)
-                    continue
+                    skippedFiles++; log("[MSC] SKIP (deja copie): $name")
+                    totalFiles = maxOf(0, totalFiles - 1); continue
                 }
                 try {
-                    saveSafFile(f); doneFiles++
-                    log("[MSC] OK: ${f.name}")
+                    saveSafFile(doc, name); doneFiles++
+                    log("[MSC] OK: $name")
                     updateProgress(getString(R.string.notif_progress, doneFiles, totalFiles), doneFiles, totalFiles)
                 } catch (e: Exception) {
-                    log("[MSC] ERREUR ${f.name}: ${e.message}")
+                    log("[MSC] ERREUR $name: ${e.message}")
                 }
             }
             if (doneFiles > 0) {
@@ -134,19 +145,26 @@ class TransferService : Service() {
         } finally { stopSelf() }
     }
 
-    private fun collectDocumentFiles(dir: DocumentFile, sinceTimestamp: Long, result: MutableList<DocumentFile>) {
+    private fun collectDocumentFiles(dir: DocumentFile, sinceTimestamp: Long, result: MutableList<DocEntry>) {
         for (child in dir.listFiles()) {
             if (child.isDirectory) { collectDocumentFiles(child, sinceTimestamp, result); continue }
-            val name = child.name ?: continue
+            val name = child.name ?: continue          // cache name NOW while SAF has it
             if (!isMediaFile(name)) continue
-            val ts = child.lastModified()
-            // ts == 0 means SAF can't read the date -> skip to be safe (avoids pulling old photos)
-            if (ts > sinceTimestamp) result.add(child)
+            val ts = when {
+                name.lowercase().endsWith(".jpg") || name.lowercase().endsWith(".jpeg") ||
+                name.lowercase().endsWith(".arw") || name.lowercase().endsWith(".raw") ->
+                    readExifDate(child.uri)            // fast: reads only EXIF header
+                else -> child.lastModified()           // video: use lastModified
+            }
+            when {
+                ts == 0L -> log("[MSC] Ignore (date illisible): $name") // skip, don't risk duplicates
+                ts > sinceTimestamp -> result.add(DocEntry(child, name))
+                // else: photo prise avant la coupure, on ignore
+            }
         }
     }
 
-    private fun saveSafFile(doc: DocumentFile) {
-        val name = doc.name ?: throw Exception("nom null")
+    private fun saveSafFile(doc: DocumentFile, name: String) {
         val displayName = "A6700_$name"
         val mime = mimeFor(name)
         val isImage = mime.startsWith("image/")
@@ -185,7 +203,6 @@ class TransferService : Service() {
             collectMediaFiles(dcim, sinceTimestamp, files)
             log("[MSC] ${files.size} fichier(s) a copier")
             if (files.isEmpty()) { updateProgress(getString(R.string.notif_no_photos), 0, 0); return }
-            files.sortBy { it.lastModified() }
             totalFiles = files.size; doneFiles = 0; skippedFiles = 0
             updateProgress(getString(R.string.notif_progress, 0, totalFiles), 0, totalFiles)
             for (f in files) {
