@@ -15,14 +15,25 @@
     <string name="transfer_channel_name">Transfert en cours</string>
     <string name="config_channel_name">Configuration requise</string>
     <string name="notif_open_app">Ouvrez l’app pour définir la date de départ</string>
-    <string name="notif_starting">Connexion MTP…</string>
+    <string name="notif_starting">Démarrage du transfert…</string>
     <string name="notif_scanning">Scan du stockage caméra…</string>
-    <string name="notif_no_storage">Aucun stockage MTP détecté — vérifiez le mode USB de l’appareil</string>
-    <string name="notif_no_photos">Aucune nouvelle photo à transférer</string>
-    <string name="notif_progress">%1$d / %2$d photos transférées</string>
-    <string name="notif_done">Terminé — %1$d photo(s) copiée(s)</string>
+    <string name="notif_no_storage">Aucun stockage détecté — vérifiez le mode USB</string>
+    <string name="notif_no_photos">Aucun nouveau fichier à transférer</string>
+    <string name="notif_progress">%1$d / %2$d fichiers transférés</string>
+    <string name="notif_done">Terminé — %1$d fichier(s) copié(s)</string>
     <string name="notif_usb_error">Impossible d’ouvrir le périphérique USB</string>
-    <string name="notif_mtp_error">Erreur MTP — vérifiez que le Sony est en mode Transfert de fichiers</string>
+    <string name="notif_mtp_error">Erreur MTP — essayez le mode MSC sur le Sony</string>
 
-    <string name="info_how_it_works">Comment ça marche :\n\n1. Définissez la date du dernier transfert (ou la date de début).\n2. Sur le Sony a6700 : Menu → Réseau → USB → Transfert de fichiers (MTP).\n3. Branchez le câble USB entre le Sony et votre Pixel.\n4. Autorisez l’accès dans le dialogue qui s’affiche.\n5. L’app démarre automatiquement et copie les nouvelles photos dans DCIM/Camera.\n\nLa caméra n’est jamais modifiée (lecture seule MTP).</string>
+    <string name="info_how_it_works">Mode MSC (recommandé) :
+1. Définissez la date du dernier transfert.
+2. Sony a6700 : Menu → Réseau → USB → Stocker/recharger (MSC).
+3. Branchez le câble USB.
+4. Le transfert démarre automatiquement.
+
+Tous les fichiers (JPG, ARW, MP4…) postérieurs à la date seront copiés dans DCIM/Camera.
+
+Si le transfert ne démarre pas seul, appuyez sur \"Scan MSC maintenant\".</string>
+
+    <string name="btn_check_update">Vérifier les mises à jour</string>
+    <string name="btn_scan_msc">Scan MSC maintenant</string>
 </resources>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F5F5F5">
@@ -11,14 +12,31 @@
         android:padding="24dp">
 
         <!-- Header -->
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Sony a6700"
-            android:textSize="28sp"
-            android:textStyle="bold"
-            android:textColor="#212121"
-            android:layout_marginTop="16dp" />
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Sony a6700"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="#212121" />
+
+            <TextView
+                android:id="@+id/tv_version"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:text="v?"
+                android:textSize="13sp"
+                android:textColor="#9E9E9E" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
@@ -26,23 +44,20 @@
             android:text="Auto-Sync vers Mobile"
             android:textSize="16sp"
             android:textColor="#757575"
-            android:layout_marginBottom="32dp" />
+            android:layout_marginBottom="24dp" />
 
-        <!-- Carte statut transfert -->
+        <!-- Carte date transfert -->
         <androidx.cardview.widget.CardView
-            xmlns:app="http://schemas.android.com/apk/res-auto"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="12dp"
             app:cardElevation="2dp"
             android:layout_marginBottom="16dp">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="20dp">
-
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -52,7 +67,6 @@
                     android:textColor="#9E9E9E"
                     android:letterSpacing="0.1"
                     android:layout_marginBottom="8dp" />
-
                 <TextView
                     android:id="@+id/tv_status"
                     android:layout_width="match_parent"
@@ -60,32 +74,27 @@
                     android:textSize="15sp"
                     android:textColor="#212121"
                     android:layout_marginBottom="16dp" />
-
                 <Button
                     android:id="@+id/btn_set_date"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/btn_set_date"
                     android:backgroundTint="#1976D2" />
-
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
         <!-- Carte permissions -->
         <androidx.cardview.widget.CardView
-            xmlns:app="http://schemas.android.com/apk/res-auto"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="12dp"
             app:cardElevation="2dp"
             android:layout_marginBottom="16dp">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="20dp">
-
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -95,7 +104,6 @@
                     android:textColor="#9E9E9E"
                     android:letterSpacing="0.1"
                     android:layout_marginBottom="8dp" />
-
                 <TextView
                     android:id="@+id/tv_permission_status"
                     android:layout_width="match_parent"
@@ -103,25 +111,142 @@
                     android:textSize="15sp"
                     android:textColor="#212121"
                     android:layout_marginBottom="16dp" />
-
                 <Button
                     android:id="@+id/btn_permission"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:backgroundTint="#388E3C" />
-
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Instructions -->
-        <TextView
+        <!-- Carte MSC -->
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/info_how_it_works"
-            android:textSize="13sp"
-            android:textColor="#757575"
-            android:lineSpacingMultiplier="1.5"
-            android:layout_marginTop="8dp" />
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            android:layout_marginBottom="16dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Mode MSC"
+                    android:textSize="12sp"
+                    android:textAllCaps="true"
+                    android:textColor="#9E9E9E"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="8dp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/info_how_it_works"
+                    android:textSize="13sp"
+                    android:textColor="#424242"
+                    android:lineSpacingMultiplier="1.4"
+                    android:layout_marginBottom="16dp" />
+                <Button
+                    android:id="@+id/btn_scan_msc"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/btn_scan_msc"
+                    android:backgroundTint="#F57C00" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Carte mise a jour -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            android:layout_marginBottom="16dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Mise à jour"
+                    android:textSize="12sp"
+                    android:textAllCaps="true"
+                    android:textColor="#9E9E9E"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="8dp" />
+                <TextView
+                    android:id="@+id/tv_update_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Appuyez pour vérifier"
+                    android:textSize="14sp"
+                    android:textColor="#757575"
+                    android:layout_marginBottom="12dp" />
+                <Button
+                    android:id="@+id/btn_check_update"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/btn_check_update"
+                    android:backgroundTint="#7B1FA2" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Carte logs -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            android:layout_marginBottom="16dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Logs de diagnostic"
+                    android:textSize="12sp"
+                    android:textAllCaps="true"
+                    android:textColor="#9E9E9E"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="8dp" />
+                <TextView
+                    android:id="@+id/tv_log"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Aucun log pour l'instant."
+                    android:textSize="11sp"
+                    android:textColor="#212121"
+                    android:fontFamily="monospace"
+                    android:layout_marginBottom="12dp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btn_copy_log"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Copier les logs"
+                        android:backgroundTint="#616161"
+                        android:layout_marginEnd="8dp" />
+                    <Button
+                        android:id="@+id/btn_clear_log"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Effacer"
+                        android:backgroundTint="#9E9E9E" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
     </LinearLayout>
 </ScrollView>

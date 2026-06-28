@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -32,6 +38,7 @@
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
+        <!-- Recepteur USB Host (mode MTP) -->
         <receiver
             android:name=".UsbReceiver"
             android:exported="true">
@@ -45,10 +52,19 @@
 
         <receiver
             android:name=".UsbReceiver"
-            android:exported="false"
-            android:permission="fr.simioni.a6700transfer.USB_PERMISSION">
+            android:exported="false">
             <intent-filter>
                 <action android:name="fr.simioni.a6700transfer.USB_PERMISSION" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Recepteur stockage USB (mode MSC) -->
+        <receiver
+            android:name=".UsbStorageReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_MOUNTED" />
+                <data android:scheme="file" />
             </intent-filter>
         </receiver>
 
