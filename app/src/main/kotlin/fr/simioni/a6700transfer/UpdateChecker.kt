@@ -11,6 +11,7 @@ object UpdateChecker {
         "https://raw.githubusercontent.com/LeandreSimioni/6700-tranfert/main/version.properties"
     private const val APK_URL =
         "https://github.com/LeandreSimioni/6700-tranfert/releases/download/latest-build/6700-transfer-debug.apk"
+    const val PREF_DOWNLOAD_ID = "update_download_id"
 
     fun check(currentCode: Int): UpdateResult {
         return try {
@@ -35,7 +36,9 @@ object UpdateChecker {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "6700-transfer.apk")
             .setMimeType("application/vnd.android.package-archive")
-        dm.enqueue(req)
+        val downloadId = dm.enqueue(req)
+        context.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putLong(PREF_DOWNLOAD_ID, downloadId).apply()
     }
 }
 

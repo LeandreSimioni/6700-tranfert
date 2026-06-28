@@ -43,40 +43,13 @@ class TransferService : Service() {
 
     @Suppress("DEPRECATION")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_MTP
+        val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_MSC
         val sinceTimestamp = intent?.getLongExtra(EXTRA_SINCE_TIMESTAMP, -1L) ?: -1L
         if (sinceTimestamp == -1L) { stopSelf(); return START_NOT_STICKY }
 
-        when (mode) {
-            MODE_MSC -> {
-                val mountPath = intent?.getStringExtra(EXTRA_MOUNT_PATH)
-                if (mountPath == null) { stopSelf(); return START_NOT_STICKY }
-                Thread { doMscTransfer(mountPath, sinceTimestamp) }.start()
-            }
-            else -> {
-                val device: UsbDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent?.getParcelableExtra(EXTRA_USB_DEVICE, UsbDevice::class.java)
-                } else {
-                    intent?.getParcelableExtra(EXTRA_USB_DEVICE)
-                }
-                if (device == null) { stopSelf(); return START_NOT_STICKY }
-                val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-                val connection = usbManager.openDevice(device)
-                if (connection == null) {
-                    log("[MTP] Impossible d'ouvrir le device USB")
-                    updateNotification(getString(R.string.notif_usb_error))
-                    stopSelf(); return START_NOT_STICKY
-                }
-                val mtpDevice = MtpDevice(device)
-                if (!mtpDevice.open(connection)) {
-                    connection.close()
-                    log("[MTP] Protocole MTP refuse (verifiez le mode USB du Sony)")
-                    updateNotification(getString(R.string.notif_mtp_error))
-                    stopSelf(); return START_NOT_STICKY
-                }
-                Thread { doMtpTransfer(mtpDevice, sinceTimestamp) }.start()
-            }
-        }
+        val mountPath = intent?.getStringExtra(EXTRA_MOUNT_PATH)
+        if (mountPath == null) { stopSelf(); return START_NOT_STICKY }
+        Thread { doMscTransfer(mountPath, sinceTimestamp) }.start()
         return START_NOT_STICKY
     }
 
@@ -86,6 +59,9 @@ class TransferService : Service() {
         try {
             updateNotification(getString(R.string.notif_scanning))
             log("[MSC] Scan dans $mountPath")
+            File(mountPath).list()?.take(30)?.let { entries ->
+                log("[MSC] Contenu racine: ${entries.joinToString(", ")}")
+            } ?: log("[MSC] Racine inaccessible (permission manquante?)")
             val dcim = File(mountPath, "DCIM")
             if (!dcim.exists()) {
                 log("[MSC] Pas de dossier DCIM dans $mountPath")
@@ -192,106 +168,6 @@ class TransferService : Service() {
             contentResolver.update(uri, values, null, null)
         } catch (e: Exception) {
             contentResolver.delete(uri, null, null); throw e
-        }
-    }
-
-    private fun doMtpTransfer(mtpDevice: MtpDevice, sinceTimestamp: Long) {
-        try {
-            val storageIds = mtpDevice.storageIds
-            if (storageIds == null || storageIds.isEmpty()) {
-                log("[MTP] Aucun stockage trouve")
-                updateNotification(getString(R.string.notif_no_storage))
-                return
-            }
-            log("[MTP] Connexion ouverte OK")
-            log("[MTP] Stockages trouves: ${storageIds.size} (IDs: ${storageIds.toList()})")
-            updateNotification(getString(R.string.notif_scanning))
-            val queue = mutableListOf<MtpObjectInfo>()
-            for (storageId in storageIds) {
-                collectMtpMedia(mtpDevice, storageId, 0, sinceTimestamp, queue)
-            }
-            queue.sortBy { it.dateCreated }
-            log("[MTP] Scan termine: ${queue.size} fichier(s) a copier")
-            if (queue.isEmpty()) {
-                log("[MTP] Aucun nouveau fichier depuis la date configuree")
-                updateNotification(getString(R.string.notif_no_photos))
-                return
-            }
-            var latestTimestamp = sinceTimestamp
-            var count = 0
-            for (info in queue) {
-                val ext = info.name?.substringAfterLast('.', "")?.lowercase() ?: "jpg"
-                val tempFile = File(cacheDir, "mtp_dl_${info.objectHandle}.$ext")
-                try {
-                    if (mtpDevice.importFile(info.objectHandle, tempFile.absolutePath)) {
-                        val displayName = info.name ?: "IMG_${info.objectHandle}.$ext"
-                        processAndSaveMtp(tempFile, displayName)
-                        val exifDate = if (ext == "jpg" || ext == "jpeg") ImageProcessor.getExifDate(tempFile) else 0
-                        val date = if (exifDate > 0) exifDate else info.dateCreated * 1000L
-                        if (date > latestTimestamp) latestTimestamp = date
-                        count++
-                        log("[MTP] OK: $displayName")
-                        updateNotification(getString(R.string.notif_progress, count, queue.size))
-                    } else {
-                        log("[MTP] Import echoue: ${info.name}")
-                    }
-                } catch (e: Exception) {
-                    log("[MTP] ERREUR ${info.name}: ${e.javaClass.simpleName}: ${e.message}")
-                } finally {
-                    tempFile.delete()
-                }
-            }
-            getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
-                .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTimestamp).apply()
-            log("[MTP] Termine: $count fichier(s) copie(s)")
-            updateNotification(getString(R.string.notif_done, count))
-        } finally {
-            mtpDevice.close()
-            stopSelf()
-        }
-    }
-
-    private fun collectMtpMedia(
-        device: MtpDevice, storageId: Int, parentHandle: Int,
-        sinceTimestamp: Long, result: MutableList<MtpObjectInfo>
-    ) {
-        val handles = device.getObjectHandles(storageId, 0, parentHandle) ?: return
-        for (handle in handles) {
-            val info = device.getObjectInfo(handle) ?: continue
-            when (info.format) {
-                MtpConstants.FORMAT_ASSOCIATION ->
-                    collectMtpMedia(device, storageId, handle, sinceTimestamp, result)
-                MtpConstants.FORMAT_EXIF_JPEG,
-                0x3800,
-                MtpConstants.FORMAT_MP4_CONTAINER,
-                MtpConstants.FORMAT_AVI,
-                MtpConstants.FORMAT_UNDEFINED_VIDEO ->
-                    if (info.dateCreated * 1000L > sinceTimestamp) result.add(info)
-            }
-        }
-    }
-
-    private fun processAndSaveMtp(srcFile: File, originalName: String) {
-        val ext = originalName.substringAfterLast('.', "").lowercase()
-        val outName = "A6700_$originalName"
-        val mime = mimeFor(originalName)
-        val isImage = mime.startsWith("image/")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val processed = if (ext == "jpg" || ext == "jpeg") {
-                File(cacheDir, "proc_$originalName").also { ImageProcessor.process(srcFile, it) }
-            } else srcFile
-            try { insertToMediaStore(processed, outName, mime, isImage) }
-            finally { if (processed != srcFile) processed.delete() }
-        } else {
-            val destDir = (if (isImage)
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera")
-            else
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            ).also { it.mkdirs() }
-            val dest = File(destDir, outName)
-            if (ext == "jpg" || ext == "jpeg") ImageProcessor.process(srcFile, dest)
-            else srcFile.copyTo(dest, overwrite = true)
-            MediaScannerConnection.scanFile(this, arrayOf(dest.absolutePath), null, null)
         }
     }
 
