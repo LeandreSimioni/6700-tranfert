@@ -41,15 +41,23 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Publish release
+      - name: Delete old release
+        run: gh release delete latest-build --cleanup-tag --yes 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release
         run: |
-          # Supprime release + tag en une seule commande (--cleanup-tag)
-          gh release delete latest-build --cleanup-tag --yes 2>/dev/null || true
-          sleep 3
           gh release create latest-build \
             --title "6700 Transfer - Derniere build (debug)" \
             --notes "APK debug genere le $(date '+%d/%m/%Y a %H:%M UTC')." \
-            --prerelease \
-            "app/build/outputs/apk/debug/app-debug.apk#6700-transfer-debug.apk"
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK to release
+        run: |
+          gh release upload latest-build \
+            app/build/outputs/apk/debug/app-debug.apk#6700-transfer-debug.apk
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
