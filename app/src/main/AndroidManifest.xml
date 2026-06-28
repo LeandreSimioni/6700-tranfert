@@ -1,20 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Lecture stockage externe (API 26-32) -->
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <!-- Écriture stockage externe (API 26-29) -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
-    <!-- Accès complet fichiers (API 30+) pour lire la carte SD via OTG -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
     <application
         android:label="@string/app_name"
@@ -39,11 +33,22 @@
             android:exported="false" />
 
         <receiver
-            android:name=".UsbStorageReceiver"
+            android:name=".UsbReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MEDIA_MOUNTED" />
-                <data android:scheme="file" />
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
+        </receiver>
+
+        <receiver
+            android:name=".UsbReceiver"
+            android:exported="false"
+            android:permission="fr.simioni.a6700transfer.USB_PERMISSION">
+            <intent-filter>
+                <action android:name="fr.simioni.a6700transfer.USB_PERMISSION" />
             </intent-filter>
         </receiver>
 

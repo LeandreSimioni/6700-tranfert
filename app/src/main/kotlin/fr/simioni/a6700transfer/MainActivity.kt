@@ -4,12 +4,9 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -43,19 +40,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUi() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val timestamp = prefs.getLong(KEY_LAST_TRANSFER, -1L)
+        val timestamp = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_LAST_TRANSFER, -1L)
 
         val tvStatus = findViewById<TextView>(R.id.tv_status)
         val tvPermission = findViewById<TextView>(R.id.tv_permission_status)
         val btnSetDate = findViewById<Button>(R.id.btn_set_date)
         val btnPermission = findViewById<Button>(R.id.btn_permission)
 
-        if (timestamp == -1L) {
-            tvStatus.text = getString(R.string.status_not_configured)
+        tvStatus.text = if (timestamp == -1L) {
+            getString(R.string.status_not_configured)
         } else {
-            val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE)
-            tvStatus.text = getString(R.string.status_last_transfer, fmt.format(Date(timestamp)))
+            getString(R.string.status_last_transfer,
+                SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(timestamp)))
         }
 
         btnSetDate.setOnClickListener { showDateTimePicker() }
@@ -88,22 +85,16 @@ class MainActivity : AppCompatActivity() {
                         updateUi()
                         Toast.makeText(this, R.string.date_saved, Toast.LENGTH_SHORT).show()
                     },
-                    cal.get(Calendar.HOUR_OF_DAY),
-                    cal.get(Calendar.MINUTE),
-                    true
+                    cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true
                 ).show()
             },
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH),
-            cal.get(Calendar.DAY_OF_MONTH)
+            cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
         ).show()
     }
 
     private fun hasAllPermissions(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) return false
-        } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) return false
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -114,16 +105,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            return
-        }
-
         val toRequest = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED)
-                toRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED)
                 toRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
