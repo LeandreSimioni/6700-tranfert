@@ -25,6 +25,9 @@ class TransferService : Service() {
     companion object {
         const val EXTRA_USB_DEVICE = "usb_device"
         const val EXTRA_SINCE_TIMESTAMP = "since_timestamp"
+        const val ACTION_TRANSFER_BROADCAST = "fr.simioni.a6700transfer.TRANSFER_UPDATE"
+        const val EXTRA_BROADCAST_MSG = "msg"
+        const val EXTRA_BROADCAST_DONE = "done"
         private const val NOTIF_ID = 100
         private const val CHANNEL_ID = "transfer"
     }
@@ -66,7 +69,6 @@ class TransferService : Service() {
 
     private fun doTransfer(mtpDevice: MtpDevice, sinceTimestamp: Long) {
         try {
-            // storageIds est IntArray? — pas de isNullOrEmpty() sur les tableaux primitifs
             val storageIds: IntArray = mtpDevice.storageIds ?: run {
                 updateNotification(getString(R.string.notif_no_storage))
                 return
@@ -76,7 +78,7 @@ class TransferService : Service() {
                 return
             }
 
-            updateNotification(getString(R.string.notif_scanning))
+            broadcast(getString(R.string.notif_scanning))
             val queue = mutableListOf<MtpObjectInfo>()
             for (storageId in storageIds) {
                 collectJpegs(mtpDevice, storageId, 0, sinceTimestamp, queue)
@@ -85,6 +87,7 @@ class TransferService : Service() {
 
             if (queue.isEmpty()) {
                 updateNotification(getString(R.string.notif_no_photos))
+                broadcast(getString(R.string.notif_no_photos), done = true)
                 return
             }
 
@@ -100,7 +103,9 @@ class TransferService : Service() {
                             ?: (info.dateCreated * 1000L)
                         if (date > latestTimestamp) latestTimestamp = date
                         count++
-                        updateNotification(getString(R.string.notif_progress, count, queue.size))
+                        val msg = getString(R.string.notif_progress, count, queue.size)
+                        updateNotification(msg)
+                        broadcast(msg)
                     }
                 } catch (_: Exception) {
                 } finally {
@@ -111,11 +116,21 @@ class TransferService : Service() {
             getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putLong(MainActivity.KEY_LAST_TRANSFER, latestTimestamp).apply()
 
-            updateNotification(getString(R.string.notif_done, count))
+            val doneMsg = getString(R.string.notif_done, count)
+            updateNotification(doneMsg)
+            broadcast(doneMsg, done = true)
         } finally {
             mtpDevice.close()
             stopSelf()
         }
+    }
+
+    private fun broadcast(msg: String, done: Boolean = false) {
+        sendBroadcast(Intent(ACTION_TRANSFER_BROADCAST).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_BROADCAST_MSG, msg)
+            putExtra(EXTRA_BROADCAST_DONE, done)
+        })
     }
 
     private fun collectJpegs(

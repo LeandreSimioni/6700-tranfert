@@ -3,10 +3,14 @@ package fr.simioni.a6700transfer
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -29,6 +33,22 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { updateUi() }
 
+    private val transferReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val msg = intent.getStringExtra(TransferService.EXTRA_BROADCAST_MSG) ?: return
+            val done = intent.getBooleanExtra(TransferService.EXTRA_BROADCAST_DONE, false)
+            val cardTransfer = findViewById<View>(R.id.card_transfer)
+            val tvProgress = findViewById<TextView>(R.id.tv_transfer_progress)
+            if (done) {
+                cardTransfer.visibility = View.GONE
+                updateUi()
+            } else {
+                cardTransfer.visibility = View.VISIBLE
+                tvProgress.text = msg
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -37,7 +57,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val filter = IntentFilter(TransferService.ACTION_TRANSFER_BROADCAST)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(transferReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(transferReceiver, filter)
+        }
         updateUi()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try { unregisterReceiver(transferReceiver) } catch (_: Exception) {}
     }
 
     private fun updateUi() {
