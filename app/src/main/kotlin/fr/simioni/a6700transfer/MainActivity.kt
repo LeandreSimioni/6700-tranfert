@@ -8,13 +8,14 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.storage.StorageManager
 import android.provider.Settings
-import android.service.notification.NotificationListenerService
 import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity() {
         const val KEY_LAST_TRANSFER = "last_transfer_timestamp"
         const val KEY_SAF_URI_PREFIX = "saf_uri_"
         const val KEY_MAX_DIMENSION = "max_dimension"
+        private const val SONY_VID = 0x054C
     }
 
     private var pendingScanAfterGrant = false
@@ -75,7 +77,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_clear_log).setOnClickListener { TransferLog.clear(this); refreshLogs() }
         findViewById<Button>(R.id.btn_scan_msc).setOnClickListener { startManualMscScan() }
         findViewById<Button>(R.id.btn_check_update).setOnClickListener { checkUpdate() }
-        findViewById<Button>(R.id.btn_notif_access).setOnClickListener { openNotificationAccessSettings() }
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val rg = findViewById<RadioGroup>(R.id.rg_resize)
@@ -93,6 +94,35 @@ class MainActivity : AppCompatActivity() {
             }
             prefs.edit().putInt(KEY_MAX_DIMENSION, dim).apply()
         }
+
+        // L'app a ete ouverte par Android suite au branchement Sony
+        handleUsbIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop: si l'app est deja ouverte, onNewIntent recoit le nouvel intent USB
+        handleUsbIntent(intent)
+    }
+
+    private fun handleUsbIntent(intent: Intent?) {
+        if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        val device: UsbDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java) ?: return
+        else
+            @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_DEVICE) ?: return
+        if (device.vendorId != SONY_VID) return
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getLong(KEY_LAST_TRANSFER, -1L) == -1L) {
+            TransferLog.add(this, "[USB] Sony detecte - date non configuree")
+            Toast.makeText(this, "Sony détecté ! Définissez d'abord la date de départ.", Toast.LENGTH_LONG).show()
+            refreshLogs(); return
+        }
+        TransferLog.add(this, "[USB] Sony detecte via Activity - demarrage surveillance MSC")
+        ContextCompat.startForegroundService(this, Intent(this, WatchdogService::class.java))
+        Toast.makeText(this, "Sony détecté — sélectionnez MSC sur l'appareil pour lancer le transfert", Toast.LENGTH_LONG).show()
+        refreshLogs()
     }
 
     override fun onResume() {
@@ -100,15 +130,6 @@ class MainActivity : AppCompatActivity() {
         updateUi()
         refreshLogs()
         requestBatteryOptimizationExemption()
-    }
-
-    private fun openNotificationAccessSettings() {
-        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-    }
-
-    private fun isNotificationAccessGranted(): Boolean {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
-        return flat.contains(packageName)
     }
 
     private fun requestBatteryOptimizationExemption() {
@@ -132,17 +153,6 @@ class MainActivity : AppCompatActivity() {
         else getString(R.string.status_last_transfer,
             SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date(timestamp)))
         findViewById<Button>(R.id.btn_set_date).setOnClickListener { showDateTimePicker() }
-
-        // Acces notifications
-        val tvNotif = findViewById<TextView>(R.id.tv_notif_access_status)
-        val btnNotif = findViewById<Button>(R.id.btn_notif_access)
-        if (isNotificationAccessGranted()) {
-            tvNotif.text = "Accès notifications ✓ (détection auto active)"
-            btnNotif.text = "Vérifier l'accès"
-        } else {
-            tvNotif.text = "⚠️ Accès notifications requis pour le déclenchement auto"
-            btnNotif.text = "Accorder l'accès notifications"
-        }
 
         val tvPerm = findViewById<TextView>(R.id.tv_permission_status)
         val btnPerm = findViewById<Button>(R.id.btn_permission)

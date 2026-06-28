@@ -17,7 +17,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
@@ -30,13 +29,26 @@
         android:allowBackup="true"
         android:requestLegacyExternalStorage="true">
 
+        <!--
+            USB_DEVICE_ATTACHED sur MainActivity :
+            Android propose "Toujours ouvrir avec 6700 Transfer" a la premiere connexion.
+            Apres validation, brancher le Sony ouvre l'app directement (premier plan,
+            aucune restriction Android). L'app detecte le Sony et lance WatchdogService.
+        -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
         </activity>
 
         <service
@@ -49,18 +61,7 @@
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
-        <!-- Intercepte la notif systeme Cle USB Sony -->
-        <service
-            android:name=".UsbNotificationListener"
-            android:label="6700 Transfer"
-            android:exported="true"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <!-- Detection Sony USB (USB_DEVICE_ATTACHED = manifeste, toujours actif) -->
+        <!-- Fallback broadcast: detection Sony USB -->
         <receiver
             android:name=".UsbReceiver"
             android:exported="true">
@@ -72,7 +73,7 @@
                 android:resource="@xml/device_filter" />
         </receiver>
 
-        <!-- Backup: montage volume MSC -->
+        <!-- Fallback: montage volume MSC -->
         <receiver
             android:name=".UsbStorageReceiver"
             android:exported="true">

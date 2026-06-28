@@ -43,43 +43,6 @@
             android:textColor="#757575"
             android:layout_marginBottom="24dp" />
 
-        <!-- Acces notifications -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="2dp"
-            android:layout_marginBottom="16dp">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Déclenchement automatique"
-                    android:textSize="12sp"
-                    android:textAllCaps="true"
-                    android:textColor="#9E9E9E"
-                    android:letterSpacing="0.1"
-                    android:layout_marginBottom="8dp" />
-                <TextView
-                    android:id="@+id/tv_notif_access_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textSize="14sp"
-                    android:textColor="#212121"
-                    android:layout_marginBottom="12dp" />
-                <Button
-                    android:id="@+id/btn_notif_access"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:backgroundTint="#E53935" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Dernier transfert -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -116,7 +79,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Permissions -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -152,7 +114,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Taille photos -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -210,7 +171,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Mode MSC -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -248,7 +208,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Mise a jour -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -286,7 +245,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Logs -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
