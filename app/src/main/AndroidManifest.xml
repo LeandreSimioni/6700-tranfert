@@ -18,6 +18,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
@@ -59,6 +60,7 @@
             </intent-filter>
         </service>
 
+        <!-- Detection Sony USB (USB_DEVICE_ATTACHED = manifeste, toujours actif) -->
         <receiver
             android:name=".UsbReceiver"
             android:exported="true">
@@ -70,6 +72,7 @@
                 android:resource="@xml/device_filter" />
         </receiver>
 
+        <!-- Backup: montage volume MSC -->
         <receiver
             android:name=".UsbStorageReceiver"
             android:exported="true">
@@ -79,6 +82,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Redemarrage apres boot -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Fin de telechargement mise a jour -->
         <receiver
             android:name=".DownloadCompleteReceiver"
             android:exported="true">
